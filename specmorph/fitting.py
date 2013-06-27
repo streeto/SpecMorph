@@ -5,7 +5,7 @@ Created on Jun 10, 2013
 '''
 
 from astropy.modeling import fitting
-from pycasso.util import getEllipseParams, getPixelDistance, radialProfile, logger
+from pycasso.util import getEllipseParams, getImageDistance, radialProfile, logger
 import numpy as np
 from numpy import ma
 from .model import *
@@ -77,7 +77,7 @@ class BulgeDiskFitter(object):
     
     
     def _getPixelDistance(self, x0, y0, pa, ba):
-        pd = getPixelDistance(self.f__yx.shape, x0, y0, pa, ba)
+        pd = getImageDistance(self.f__yx.shape, x0, y0, pa, ba)
         return ma.array(pd, mask=self.f__yx.mask)
 
 
@@ -175,13 +175,14 @@ class BulgeDiskFitter(object):
         return self._model.sigma[0]
 
 
-    def plot_model(self, mode='scatter', figure=None, title=''):
+    def plot_model(self, mode='scatter', figure=None, title='', interactive=False):
         self._assureFitted()
         bulge_model = BulgeModel2D(self.I_Be, self.R_e, 0.0)
         disk_model = DiskModel2D(self.I_D0, self.R_0, 0.0)
         logger.debug(self._model)
         r, f = self._getRadialProfile(mode)
         import matplotlib.pyplot as plt
+        plt.interactive(interactive)
         if figure is None:
             figure=plt.figure()        
         plt.clf()
@@ -196,4 +197,6 @@ class BulgeDiskFitter(object):
         ax.text(0.75, 0.9, r'$R^2 = %.4f$' % self.R2, transform=ax.transAxes)
         ax.set_ylabel(r'$\log\ flux$')
         ax.set_xlabel(r'$r\ [arcsec]$')
+        if not interactive:
+            plt.show()
 ################################################################################

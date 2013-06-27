@@ -3,6 +3,7 @@
 	<name>SpecMorph</name>
 	<comment></comment>
 	<projects>
+		<project>astropy</project>
 		<project>pycasso</project>
 		<project>pystarlight</project>
 	</projects>

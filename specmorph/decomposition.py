@@ -5,13 +5,14 @@ Created on Jun 6, 2013
 '''
 
 from pycasso import fitsQ3DataCube
+from pycasso.util import logger, getImageDistance
 import numpy as np
 import matplotlib.pyplot as plt
-from pycasso.morphology import BulgeDiskFitter
-from pycasso.morphology.model import BulgeModel2D, DiskModel2D
-from pycasso.util import getPixelDistance, logger
-from pycasso.morphology import gaussVelocitySmooth
 from os import path, unlink
+
+from .fitting import BulgeDiskFitter
+from .model import BulgeModel2D, DiskModel2D
+from gauss_smooth import gaussVelocitySmooth  # @UnresolvedImport
 
 __all__ = ['BulgeDiskDecomposition']
 FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -115,7 +116,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     def _getModelImage(self, model, x0, y0, pa, ba, mask=None):
         shape = (self.N_y, self.N_x)
-        r__yx = getPixelDistance(shape, x0, y0, pa, ba)
+        r__yx = getImageDistance(shape, x0, y0, pa, ba)
         image = model(r__yx)
         if mask is None:
             mask = self.qMask
