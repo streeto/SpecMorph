@@ -23,11 +23,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     def __init__(self, synthesisFile, smooth=True, target_vd=0.0, purge_cache=False):
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
-    
-    
-    @property
-    def f_syn_fixed__lyx(self):
-        return self.zoneToYX(self.f_syn_fixed, extensive=True, surface_density=False)
+        self.f_syn_fixed__lyx = self.zoneToYX(self.f_syn_fixed, extensive=True, surface_density=False)
     
     
     def _loadRestFrameSpectra(self, filename, target_vd, purge_cache=False):
