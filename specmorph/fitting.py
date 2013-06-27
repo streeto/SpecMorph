@@ -19,7 +19,7 @@ class BulgeDiskFitter(object):
     _pixel_fraction = 0.1
     _param_dtype = np.dtype([('I_Be', 'float64'), ('R_e', 'float64'),
                              ('I_D0', 'float64'), ('R_0', 'float64'),
-                             ('sigma', 'float64'), ('R2', 'float64'),
+                             ('R2', 'float64'),
                              ('x0', 'float64'), ('y0', 'float64'),
                              ('pa', 'float64'), ('ba', 'float64')])
     
@@ -114,7 +114,7 @@ class BulgeDiskFitter(object):
             return self._getRadialProfileMean()
         
         
-    def fitModel(self, mode='scatter', guess=None, fit_psf=False):
+    def fitModel(self, mode='scatter', guess=None):
         r, f = self._getRadialProfile(mode)
         if guess is not None:
             I_Be, R_e, I_D0, R_0 = guess[:4]
@@ -139,7 +139,7 @@ class BulgeDiskFitter(object):
 
     def getFitParams(self):
         self._assureFitted()
-        return tuple(self._model.parameters) + (self._sigma, self.R2, self.x0, self.y0, self.pa, self.ba)
+        return tuple(self._model.parameters) + (self.R2, self.x0, self.y0, self.pa, self.ba)
     
     
     @property

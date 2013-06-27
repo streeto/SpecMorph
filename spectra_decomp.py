@@ -37,6 +37,8 @@ parser.add_argument('--rad-clip', dest='radClip', type=float, default=2.5,
                     help='Radial clip in arc seconds (float).')
 parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=0.0,
                     help='PSF FWHM in arcseconds.')
+parser.add_argument('--disable-parallel', dest='disableParallel', action='store_true',
+                    help='Disable parallel processing.')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 
@@ -54,14 +56,14 @@ dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 t1 = time.time()
 logger.info('Starting fit...')
-# TODO: find target_vd for all galaxies
-decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0)
+decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0, FWHM=args.fwhm)
 fit_params, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                                         FWHM=args.fwhm, rad_clip_in=args.radClip, rad_clip_out=None,
-                                         fit_psf=False, mode='mean')
+                                         rad_clip_in=args.radClip, rad_clip_out=None,
+                                         mode='mean', parallel=not args.disableParallel)
 logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 
-logger.info('Computing model spectra.')
+t1 = time.time()
+logger.info('Computing model spectra...')
 f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(fit_params)
 
 fit_l_obs = decomp.l_obs[fit_l_ix]
@@ -71,7 +73,6 @@ f_bulge__lz = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=Fals
 f_disk__lz = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
 f_syn__lz = decomp.YXToZone(f_syn__lyx, extensive=True, surface_density=False)
 
-t1 = time.time()
 logger.info('Saving to storage...')
 db = openFile(args.dbOutput, 'a')
 try:
@@ -84,6 +85,7 @@ if args.overwrite and 'fit_parameters' in grp:
 
 t = db.createTable(grp, 'fit_parameters', fit_params.dtype, 'Morphology fit parameters', Filters(1, 'blosc'),
               expectedrows=len(fit_params))
+t.attrs.FWHM = args.fwhm
 t.attrs.box_step = args.boxStep
 t.attrs.box_radius = args.boxRadius
 t.attrs.rad_clip = args.radClip
