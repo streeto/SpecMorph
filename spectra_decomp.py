@@ -10,10 +10,8 @@ from specmorph import BulgeDiskDecomposition
 from tables import openFile, Filters
 from tables import Float64Atom  # @UnresolvedImport
 
-import sys
 from os import path
 import argparse
-import numpy as np
 import time
 
 
@@ -55,12 +53,15 @@ if args.verbose:
 dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 t1 = time.time()
-
+logger.info('Starting fit...')
 # TODO: find target_vd for all galaxies
 decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0)
 fit_params, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
                                          FWHM=args.fwhm, rad_clip_in=args.radClip, rad_clip_out=None,
                                          fit_psf=False, mode='mean')
+logger.info('Done modeling, time: %.2f' % (time.time() - t1))
+
+logger.info('Computing model spectra.')
 f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(fit_params)
 
 fit_l_obs = decomp.l_obs[fit_l_ix]
@@ -70,6 +71,8 @@ f_bulge__lz = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=Fals
 f_disk__lz = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
 f_syn__lz = decomp.YXToZone(f_syn__lyx, extensive=True, surface_density=False)
 
+t1 = time.time()
+logger.info('Saving to storage...')
 db = openFile(args.dbOutput, 'a')
 try:
     grp = db.getNode('/%s/%s/%s' % (args.decompId, groupId, galaxyId))
@@ -128,5 +131,5 @@ ca[...] = f_disk__lz
 
 db.close()
 
-logger.info('total modeling time: %.2f' % (time.time() - t1))
+logger.info('Storage complete, time: %.2f' % (time.time() - t1))
 
