@@ -100,7 +100,6 @@ class BulgeDiskFitter(object):
     
 
     def _getRadialProfileMean(self):
-        # TODO: make radial profile work with masked arrays
         bin_r = np.arange(self.min_rad, self.max_rad, self._pixel_fraction)
         bin_center = (bin_r[:-1] + bin_r[1:]) / 2.0
         f__r = radialProfile(self.f__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='mean')
@@ -118,15 +117,13 @@ class BulgeDiskFitter(object):
     def fitModel(self, mode='scatter', guess=None, fit_psf=False):
         r, f = self._getRadialProfile(mode)
         if guess is not None:
-            I_Be, R_e, I_D0, R_0, sigma = guess[:5]
+            I_Be, R_e, I_D0, R_0 = guess[:4]
         else:
             I_Be=f.max()
             R_e=r.max()/4.0
             I_D0=f.max()/2.0
             R_0=r.max()/4.0
-            sigma=self._sigma
-        model = GalaxyModel(I_Be, R_e, I_D0, R_0, sigma)
-        model._sigma.fixed = not fit_psf
+        model = GalaxyModel(I_Be, R_e, I_D0, R_0, self._sigma)
         model.deriv = None
         fit = fitting.NonLinearLSQFitter(model)
         fit(r, f)
@@ -142,7 +139,7 @@ class BulgeDiskFitter(object):
 
     def getFitParams(self):
         self._assureFitted()
-        return tuple(self._model.parameters) + (self.R2, self.x0, self.y0, self.pa, self.ba)
+        return tuple(self._model.parameters) + (self._sigma, self.R2, self.x0, self.y0, self.pa, self.ba)
     
     
     @property
