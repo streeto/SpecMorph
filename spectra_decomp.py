@@ -5,7 +5,7 @@ Created on Jun 6, 2013
 '''
 
 from pycasso.util import logger
-from pycasso.morphology import BulgeDiskDecomposition
+from specmorph import BulgeDiskDecomposition
 
 from tables import openFile, Filters
 from tables import Float64Atom  # @UnresolvedImport
@@ -13,6 +13,9 @@ from tables import Float64Atom  # @UnresolvedImport
 import sys
 from os import path
 import argparse
+import numpy as np
+import time
+
 
 parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
 
@@ -22,7 +25,7 @@ parser.add_argument('runId', type=str, nargs=1,
                     help='runId string. Ex.: eBR_v20.d13c500.ps03.k1.m0.CCM.Bgsd01.v01')
 parser.add_argument('--decomp-id', dest='decompId', default= 'decomposition',
                     help='Decomposition label.')
-parser.add_argument('--db', dest='db', default= '../../../cubes.200/',
+parser.add_argument('--db', dest='db', default= '../cubes.200/',
                     help='QALIFA database path.')
 parser.add_argument('--db-out', dest='dbOutput', default='decomposition.005.h5',
                     help='Output HDF5 database path.')
@@ -51,16 +54,21 @@ if args.verbose:
 
 dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
+t1 = time.time()
+
 # TODO: find target_vd for all galaxies
 decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0)
 fit_params, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
                                          FWHM=args.fwhm, rad_clip_in=args.radClip, rad_clip_out=None,
                                          fit_psf=False, mode='mean')
-f_bulge, f_disk = decomp.getModelSpectra(fit_params)
+f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(fit_params)
 
-# FIXME: find the indices where decomp.l_obs == fit_l_obs
 fit_l_obs = decomp.l_obs[fit_l_ix]
-f_syn = decomp.f_syn_fixed__lyx[fit_l_ix]
+f_syn__lyx = decomp.f_syn_fixed__lyx[fit_l_ix]
+
+f_bulge__lz = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=False)
+f_disk__lz = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
+f_syn__lz = decomp.YXToZone(f_syn__lyx, extensive=True, surface_density=False)
 
 db = openFile(args.dbOutput, 'a')
 try:
@@ -90,17 +98,35 @@ ca[...] = fit_l_obs
 
 if args.overwrite and 'synth_spectra' in grp:
     grp.synth_spectra._f_remove()
-ca = db.createCArray(grp, 'synth_spectra', Float64Atom(), f_syn.shape, filters=Filters(1, 'blosc'))
-ca[...] = f_syn
+ca = db.createCArray(grp, 'synth_spectra', Float64Atom(), f_syn__lyx.shape, filters=Filters(1, 'blosc'))
+ca[...] = f_syn__lyx
+
+if args.overwrite and 'zone_synth_spectra' in grp:
+    grp.zone_synth_spectra._f_remove()
+ca = db.createCArray(grp, 'zone_synth_spectra', Float64Atom(), f_syn__lz.shape, filters=Filters(1, 'blosc'))
+ca[...] = f_syn__lz
 
 if args.overwrite and 'bulge_spectra' in grp:
     grp.bulge_spectra._f_remove()
-ca = db.createCArray(grp, 'bulge_spectra', Float64Atom(), f_bulge.shape, filters=Filters(1, 'blosc'))
-ca[...] = f_bulge
+ca = db.createCArray(grp, 'bulge_spectra', Float64Atom(), f_bulge__lyx.shape, filters=Filters(1, 'blosc'))
+ca[...] = f_bulge__lyx
+
+if args.overwrite and 'zone_bulge_spectra' in grp:
+    grp.zone_bulge_spectra._f_remove()
+ca = db.createCArray(grp, 'zone_bulge_spectra', Float64Atom(), f_bulge__lz.shape, filters=Filters(1, 'blosc'))
+ca[...] = f_bulge__lz
 
 if args.overwrite and 'disk_spectra' in grp:
     grp.disk_spectra._f_remove()
-ca = db.createCArray(grp, 'disk_spectra', Float64Atom(), f_disk.shape, filters=Filters(1, 'blosc'))
-ca[...] = f_disk
+ca = db.createCArray(grp, 'disk_spectra', Float64Atom(), f_disk__lyx.shape, filters=Filters(1, 'blosc'))
+ca[...] = f_disk__lyx
+
+if args.overwrite and 'zone_disk_spectra' in grp:
+    grp.zone_disk_spectra._f_remove()
+ca = db.createCArray(grp, 'zone_disk_spectra', Float64Atom(), f_disk__lz.shape, filters=Filters(1, 'blosc'))
+ca[...] = f_disk__lz
 
 db.close()
+
+logger.info('total modeling time: %.2f' % (time.time() - t1))
+
