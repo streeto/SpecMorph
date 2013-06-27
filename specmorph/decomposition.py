@@ -11,7 +11,7 @@ from os import path, unlink
 
 from .fitting import BulgeDiskFitter
 from .model import BulgeModel2D, DiskModel2D
-from gauss_smooth import gaussVelocitySmooth  # @UnresolvedImport
+from .velocity_fix import SpectraVelocityFixer
 
 __all__ = ['BulgeDiskDecomposition']
 FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -52,8 +52,9 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             from tables import openFile, Filters
             from tables import Float64Atom  # @UnresolvedImport
         except:
-            logger.warn('Pytables not installed, cache disabled. Loading will always take a long time!')
+            logger.warn('Pytables not installed, rest frame spectra cache disabled.')
             self.f_syn_fixed = self._getSpectraWithFixedVelocities(self.f_syn, target_vd)
+            return
 
         if path.exists(filename):
             if purge_cache:
@@ -78,6 +79,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         f = openFile(filename, 'w')
         try:
             self.f_syn_fixed = self._getSpectraWithFixedVelocities(self.f_syn, target_vd)
+            logger.warn('Done.')
             ca = f.createCArray('/', 'f_syn_fixed', Float64Atom(),
                                 self.f_syn_fixed.shape, filters=Filters(1, 'blosc'))
             ca[...] = self.f_syn_fixed
@@ -87,16 +89,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
 
         
     def _getSpectraWithFixedVelocities(self, f, target_vd):
-        # Fix the velocity dispersion only if needed.
-        m = self.v_d < target_vd
-        vd_fix =np.zeros_like(self.v_d)
-        vd_fix[m] = np.sqrt(target_vd**2 - self.v_d[m]**2)
-        
-        f_fixed = np.empty_like(f)
-        for i in xrange(self.N_zone):
-            fo = f[:,i]
-            f_fixed[:,i] = gaussVelocitySmooth(self.l_obs, fo, -self.v_0[i], vd_fix[i])
-        return f_fixed
+        fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d)
+        return fix_spectra(f, target_vd)
     
 
     def _getSpectraSlice(self, l1, l2=None):
@@ -119,22 +113,16 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
     
     
-    def fitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None, mode='scatter', parallel=True):
-        if parallel:
-            return self._parallelFitSpectra(step, box_radius, rad_clip_in, rad_clip_out, mode)
-        else:
-            return self._serialFitSpectra(step, box_radius, rad_clip_in, rad_clip_out, mode)
-            
-
-    def _parallelFitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None, mode='scatter'):
-        try:
-            from joblib import Parallel, delayed
-        except:
-            logger.warn('joblib not installed, falling back to serial processing.')
-            return self._serialFitSpectra(step, box_radius, rad_clip_in, rad_clip_out, mode)
+    def fitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None, mode='scatter'):
 
         morphology_fit = MorphologyFitWrapper(self.x0, self.y0, self._sigma, rad_clip_in, rad_clip_out, mode)
-        fit_params = Parallel(n_jobs=-1)(delayed(morphology_fit)(fl__yx) for fl__yx in self.specSlicer(step, box_radius))
+        spec_slices = self.specSlicer(step, box_radius)
+        try:
+            from joblib import Parallel, delayed
+            fit_params = Parallel(n_jobs=-1)(delayed(morphology_fit)(fl__yx) for fl__yx in spec_slices)
+        except:
+            logger.warn('joblib not installed, falling back to serial processing.')
+            fit_params = [morphology_fit(fl__yx) for fl__yx in spec_slices]
         fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
         return fit_params, selected_wl_ix

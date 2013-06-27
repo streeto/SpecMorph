@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.'
 parser.add_argument('galaxyId', type=str, nargs=1,
                     help='CALIFA galaxy ID. Ex.: K0001')
 parser.add_argument('runId', type=str, nargs=1,
-                    help='runId string. Ex.: eBR_v20.d13c500.ps03.k1.m0.CCM.Bgsd01.v01')
+                    help='runId string. Ex.: eBR_v20_q036.d13c512.ps03.k2.mC.CCM.Bgsd61')
 parser.add_argument('--decomp-id', dest='decompId', default= 'decomposition',
                     help='Decomposition label.')
 parser.add_argument('--db', dest='db', default= '../cubes.200/',
@@ -37,8 +37,6 @@ parser.add_argument('--rad-clip', dest='radClip', type=float, default=2.5,
                     help='Radial clip in arc seconds (float).')
 parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=0.0,
                     help='PSF FWHM in arcseconds.')
-parser.add_argument('--disable-parallel', dest='disableParallel', action='store_true',
-                    help='Disable parallel processing.')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 
@@ -55,11 +53,10 @@ if args.verbose:
 dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 t1 = time.time()
-logger.info('Starting fit...')
+logger.info('Starting fit for %s...' % galaxyId)
 decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0, FWHM=args.fwhm)
 fit_params, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                                         rad_clip_in=args.radClip, rad_clip_out=None,
-                                         mode='mean', parallel=not args.disableParallel)
+                                         rad_clip_in=args.radClip, rad_clip_out=None, mode='mean')
 logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 
 t1 = time.time()
