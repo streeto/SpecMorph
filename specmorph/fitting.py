@@ -175,7 +175,7 @@ class BulgeDiskFitter(object):
         return self._model.sigma[0]
 
 
-    def plot_model(self, mode='scatter', figure=None, title='', interactive=False):
+    def plot_model(self, mode='scatter', figure=None, title='', interactive=True):
         self._assureFitted()
         bulge_model = BulgeModel2D(self.I_Be, self.R_e, 0.0)
         disk_model = DiskModel2D(self.I_D0, self.R_0, 0.0)
