@@ -7,7 +7,6 @@ Created on Jun 6, 2013
 from pycasso import fitsQ3DataCube
 from pycasso.util import logger, getImageDistance
 import numpy as np
-import matplotlib.pyplot as plt
 from os import path, unlink
 
 from .fitting import BulgeDiskFitter
@@ -16,6 +15,16 @@ from gauss_smooth import gaussVelocitySmooth  # @UnresolvedImport
 
 __all__ = ['BulgeDiskDecomposition']
 FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
+
+
+################################################################################
+def morphology_fit(fl__yx, x0, y0, sigma, rad_clip_in, rad_clip_out, fit_psf, fit_mode):
+    fitter = BulgeDiskFitter(fl__yx)
+    fitter.setup(x0=x0, y0=y0, sigma=sigma, rad_clip_in=rad_clip_in, rad_clip_out=rad_clip_out)
+    fitter.fitModel(fit_mode, fit_psf=fit_psf)
+    return fitter.getFitParams()
+################################################################################
+
 
 ################################################################################
 class BulgeDiskDecomposition(fitsQ3DataCube):
@@ -90,23 +99,42 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             return self.f_syn_fixed__lyx[l1:l2].sum(axis=0) / nl / self.flux_unit
 
 
-    def fitSpectra(self, step=1, box_radius=0, FWHM=0.0, rad_clip_in=2.5, rad_clip_out=None, fit_psf=False, mode='scatter'):
+    def spectraSliceProducer(self, step, box_radius):
+        for wl_ix in np.arange(0, self.Nl_obs, step):
+            if __debug__:
+                wl = self.l_obs[wl_ix]
+                logger.debug('Modeling for lambda = %d \AA' % wl)
+            yield self.getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
+    
+    
+    def fitSpectra(self, step=1, box_radius=0, FWHM=0.0, rad_clip_in=2.5, rad_clip_out=None, fit_psf=False, mode='scatter', parallel=True):
+        if parallel:
+            return self._parallelFitSpectra(step, box_radius, FWHM, rad_clip_in, rad_clip_out, fit_psf, mode)
+        else:
+            return self._serialFitSpectra(step, box_radius, FWHM, rad_clip_in, rad_clip_out, fit_psf, mode)
+            
+
+    def _parallelFitSpectra(self, step=1, box_radius=0, FWHM=0.0, rad_clip_in=2.5, rad_clip_out=None, fit_psf=False, mode='scatter'):
+        try:
+            from joblib import Parallel, delayed
+        except:
+            logger.critical('joblib not installed.')
+            raise
         sigma = FWHM / FWHM_to_sigma_factor
+        fit_params = Parallel(n_jobs=-1)(delayed(morphology_fit)(fl__yx, self.x0, self.y0, sigma, rad_clip_in, rad_clip_out, fit_psf, mode) for fl__yx in self.spectraSliceProducer(step, box_radius))
+        fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
-        fit_params = np.empty(len(selected_wl_ix), dtype=BulgeDiskFitter.getParamDtype())
-        last_params = None
-        for i, wl_ix in enumerate(selected_wl_ix):
-            wl = self.l_obs[wl_ix]
-            logger.debug('Modeling for lambda = %d \AA' % wl)
-            fl__yx = self.getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
-            fitter = BulgeDiskFitter(fl__yx)
-            fitter.setup(x0=self.x0, y0=self.y0, sigma=sigma, rad_clip_in=rad_clip_in, rad_clip_out=rad_clip_out)
-            fitter.fitModel(mode, guess=last_params, fit_psf=fit_psf)
-            if len(selected_wl_ix) < 10:
-                fig = plt.figure(i)
-                fitter.plot_model(mode, fig, title=r'$\lambda = %d \AA$' % wl)
-            last_params = fitter.getFitParams()
-            fit_params[i] = last_params
+        return fit_params, selected_wl_ix
+    
+    
+    def _serialFitSpectra(self, step=1, box_radius=0, FWHM=0.0, rad_clip_in=2.5, rad_clip_out=None, fit_psf=False, mode='scatter'):
+        sigma = FWHM / FWHM_to_sigma_factor
+        fit_params = []
+        for fl__yx in self.spectraSliceProducer(step, box_radius):
+            params = morphology_fit(fl__yx, self.x0, self.y0, sigma, rad_clip_in, rad_clip_out, fit_psf, mode)
+            fit_params.append(params)
+        fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
+        selected_wl_ix = np.arange(0, self.Nl_obs, step)
         return fit_params, selected_wl_ix
     
     
