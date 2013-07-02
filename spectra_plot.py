@@ -4,8 +4,8 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-# import matplotlib
-# matplotlib.use('PDF')
+import matplotlib
+matplotlib.use('PDF')
 import matplotlib.pyplot as plt
 from pycasso.util import getImageDistance
 import numpy as np
