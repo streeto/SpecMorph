@@ -20,19 +20,22 @@ FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
 ################################################################################
 class MorphologyFitWrapper(object):
     
-    def __init__(self, x0, y0, sigma, rad_clip_in, rad_clip_out, mode):
+    def __init__(self, x0, y0, sigma, rad_clip_in, rad_clip_out, mode, plot=False):
         self.x0 = x0
         self.y0 = y0
         self.sigma = sigma
         self.rad_clip_in = rad_clip_in
         self.rad_clip_out = rad_clip_out
         self.mode = mode
+        self.plot = plot
 
     def __call__(self, fl__yx):
         fitter = BulgeDiskFitter(fl__yx)
         fitter.setup(x0=self.x0, y0=self.y0, sigma=self.sigma,
                      rad_clip_in=self.rad_clip_in, rad_clip_out=self.rad_clip_out)
         fitter.fitModel(self.mode)
+        if self.plot:
+            fitter.plot_model(self.mode, interactive=False)
         return fitter.getFitParams()
 ################################################################################
 
@@ -114,26 +117,16 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def fitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None, mode='scatter'):
-
-        morphology_fit = MorphologyFitWrapper(self.x0, self.y0, self._sigma, rad_clip_in, rad_clip_out, mode)
+        plot = __debug__ and step > 400
+        morphology_fit = MorphologyFitWrapper(self.x0, self.y0, self._sigma, rad_clip_in, rad_clip_out, mode, plot=plot)
         spec_slices = self.specSlicer(step, box_radius)
         try:
+            if plot: raise Exception('Plotting in parallel mode is no allowed, faking error.')
             from joblib import Parallel, delayed
             fit_params = Parallel(n_jobs=-1)(delayed(morphology_fit)(fl__yx) for fl__yx in spec_slices)
         except:
             logger.warn('joblib not installed, falling back to serial processing.')
             fit_params = [morphology_fit(fl__yx) for fl__yx in spec_slices]
-        fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
-        selected_wl_ix = np.arange(0, self.Nl_obs, step)
-        return fit_params, selected_wl_ix
-    
-    
-    def _serialFitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None, mode='scatter'):
-        fit_params = []
-        morphology_fit = MorphologyFitWrapper(self.x0, self.y0, self._sigma, rad_clip_in, rad_clip_out, mode)
-        for fl__yx in self.specSlicer(step, box_radius):
-            params = morphology_fit(fl__yx)
-            fit_params.append(params)
         fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
         return fit_params, selected_wl_ix
