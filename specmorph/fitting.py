@@ -32,6 +32,8 @@ class BulgeDiskFitter(object):
     pa = 0.0
     ba = 1.0
     R2 = np.nan
+    tolerance = 100.0
+    enable_bounds = False
         
 
     @classmethod
@@ -123,8 +125,19 @@ class BulgeDiskFitter(object):
             R_e=r.max()/4.0
             I_D0=f.max()/2.0
             R_0=r.max()/4.0
-        model = GalaxyModel(I_Be, R_e, I_D0, R_0, self._sigma)
-        model.deriv = None
+
+        if self.enable_bounds:
+            bounds = {
+                      'I_Be': [0.0, I_Be * self.tolerance],
+                      'R_e': [0.0, R_e * self.tolerance],
+                      'I_D0': [0.0, I_D0 * self.tolerance],
+                      'R_0': [0.0, R_0 * self.tolerance],
+                      }
+            model = GalaxyModel(I_Be, R_e, I_D0, R_0, self._sigma, bounds=bounds)
+            model.deriv = model.bound_deriv
+        else:
+            model = GalaxyModel(I_Be, R_e, I_D0, R_0, self._sigma)
+            
         fit = fitting.NonLinearLSQFitter(model)
         fit(r, f)
         self._model = model

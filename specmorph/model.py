@@ -93,27 +93,20 @@ class GalaxyModel(ParametricModel):
     R2 = None
 
 
-    def __init__(self, I_Be, R_e, I_D0, R_0, sigma, param_dim=1):
-        self.linear = False
+    def __init__(self, I_Be, R_e, I_D0, R_0, sigma, **cons):
+        try:
+            param_dim = len(I_Be)
+        except TypeError:
+            param_dim = 1
         self._I_Be = Parameter(name='I_Be', val=I_Be, mclass=self, param_dim=param_dim)
         self._R_e = Parameter(name='R_e', val=R_e, mclass=self, param_dim=param_dim)
         self._I_D0 = Parameter(name='I_D0', val=I_D0, mclass=self, param_dim=param_dim)
         self._R_0 = Parameter(name='R_0', val=R_0, mclass=self, param_dim=param_dim)
         self._sigma = sigma
-        ParametricModel.__init__(self, self.param_names, n_inputs=1, n_outputs=1, param_dim=param_dim)
+        ParametricModel.__init__(self, self.param_names, n_inputs=1, n_outputs=1, param_dim=param_dim, **cons)
         self.linear = False
+        self.deriv = self.unbound_deriv
 
-
-    def seTolerance(self, tolerance):
-        self.I_Be.min = self.I_Be[0] / tolerance
-        self.I_Be.max = self.I_Be[0] * tolerance
-        self.R_e.min = self.R_e[0] / tolerance
-        self.R_e.max = self.R_e[0] * tolerance
-        self.I_D0.min = self.I_D0[0] / tolerance
-        self.I_D0.max = self.I_D0[0] * tolerance
-        self.R_0.min = self.R_0[0] / tolerance
-        self.R_0.max = self.R_0[0] * tolerance
-        
 
     def eval(self, r, params):
         I_Be, R_e, I_D0, R_0 = params
@@ -122,9 +115,9 @@ class GalaxyModel(ParametricModel):
             I_D = disk_profile(r, I_D0, R_0)
             return I_B + I_D
         return PSF_gaussian_convolve(self._sigma, r, bulge_disk_profile)
-        
 
-    def deriv(self, params, r, y):
+
+    def unbound_deriv(self, params, r, dummy=None):
         I_Be, R_e, I_D0, R_0 = params
         I_B = bulge_profile(r, I_Be, R_e)
         I_D = disk_profile(r, I_D0, R_0)
@@ -135,6 +128,29 @@ class GalaxyModel(ParametricModel):
         return np.array([d_I_Be, d_Re, d_I_D0, d_R0]).T
 
         
+    def bound_deriv(self, params, r, dummy=None):
+        I_Be, R_e, I_D0, R_0 = params
+        d_I_Be, d_Re, d_I_D0, d_R0 = self.unbound_deriv(params, r).T
+        d_I_Be = self._bound_deriv_param(self._I_Be, I_Be, d_I_Be)
+        d_Re = self._bound_deriv_param(self._R_e, R_e, d_Re)
+        d_I_D0 = self._bound_deriv_param(self._I_D0, I_D0, d_I_D0)
+        d_R0 = self._bound_deriv_param(self._R_0, R_0, d_R0)
+        return np.array([d_I_Be, d_Re, d_I_D0, d_R0]).T
+
+
+    def _bound_deriv_param(self, param, value, deriv):
+        lo_threshold = 0.2
+        hi_threshold = 0.8
+        k = 1000.0
+        vmin, vmax = self.constraints.bounds[param._name]
+        v = value - vmin / (vmax - vmin)
+        if v < lo_threshold:
+            return deriv + k * (v - lo_threshold)**4
+        elif v > hi_threshold:
+            return deriv + k * (v - hi_threshold)**4
+        return deriv
+
+
     def __call__(self, r):
         r, fmt = _convert_input(r, self.param_dim)
         result = self.eval(r, self.param_sets)
