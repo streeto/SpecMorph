@@ -23,9 +23,11 @@ class GridManager(object):
     
     def __init__(self, starlight_dir, decomp_file, decomp_id, run_id, galaxy_id):
         self.starlightDir = starlight_dir
-        self.basesDir = path.join(starlight_dir, 'BasesDir')
-        self.specFileDir = path.join(starlight_dir, 'input')
-        self.outDir = path.join(starlight_dir, 'output')
+        self.basesDir = 'BasesDir'
+        self.obsDir = 'input'
+        self.outDir = 'output'
+        self.maskDir = '.'
+        self.etcDir = '.'
         self.galaxyId = galaxy_id
         self.decompId = decomp_id
         self.runId = run_id
@@ -65,13 +67,15 @@ class GridManager(object):
         grid.starlightDir = self.starlightDir
         grid.randPhone = -958089828
         # grid.seed()
-        grid.basesDir = path.abspath(self.basesDir) + path.sep
-        grid.obsDir = path.abspath(self.specFileDir) + path.sep
-        grid.maskDir = path.abspath(self.starlightDir) + path.sep
-        grid.etcDir = path.abspath(self.starlightDir) + path.sep
-        grid.outDir = path.abspath(self.outDir) + path.sep
+        grid.basesDir = self.basesDir + path.sep
+        grid.obsDir = self.obsDir + path.sep
+        grid.maskDir = self.maskDir + path.sep
+        grid.etcDir = self.etcDir + path.sep
+        grid.outDir = self.outDir + path.sep
         grid.fluxUnit = self.flux_unit
         run_template = grid.runs.pop()
+        
+        obsDir = path.join(self.starlightDir, self.obsDir) 
         for z in xrange(zone1, zone2):
             if z >= self.N_zone:
                 break
@@ -81,29 +85,21 @@ class GridManager(object):
             new_run.inFile = '%s_%04d_%s.syn.in' % (self.galaxyId, z, self.runId)
             new_run.outFile = '%s_%04d_%s.syn.out' % (self.galaxyId, z, self.runId)
             new_run.lumDistanceMpc = self.distance_Mpc
-            write_table(self.wl, self.f_syn[:, z], path.join(grid.obsDir, new_run.inFile))
+            write_table(self.wl, self.f_syn[:, z], path.join(obsDir, new_run.inFile))
             grid.runs.append(new_run)
 
             new_run = GridRun.sameAs(run_template)
             new_run.inFile = '%s_%04d_%s.disk.in' % (self.galaxyId, z, self.runId)
             new_run.outFile = '%s_%04d_%s.disk.out' % (self.galaxyId, z, self.runId)
             new_run.lumDistanceMpc = self.distance_Mpc
-            write_table(self.wl, self.f_disk[:, z], path.join(grid.obsDir, new_run.inFile))
+            write_table(self.wl, self.f_disk[:, z], path.join(obsDir, new_run.inFile))
             grid.runs.append(new_run)
 
             new_run = GridRun.sameAs(run_template)
             new_run.inFile = '%s_%04d_%s.bulge.in' % (self.galaxyId, z, self.runId)
             new_run.outFile = '%s_%04d_%s.bulge.out' % (self.galaxyId, z, self.runId)
             new_run.lumDistanceMpc = self.distance_Mpc
-            write_table(self.wl, self.f_bulge[:, z], path.join(grid.obsDir, new_run.inFile))
-            grid.runs.append(new_run)
-
-            new_run = GridRun.sameAs(run_template)
-            new_run.inFile = '%s_%04d_%s.res.in' % (self.galaxyId, z, self.runId)
-            new_run.outFile = '%s_%04d_%s.res.out' % (self.galaxyId, z, self.runId)
-            new_run.lumDistanceMpc = self.distance_Mpc
-            residual = self.f_syn[:, z] - self.f_bulge[:, z] - self.f_disk[:, z]
-            write_table(self.wl, residual, path.join(grid.obsDir, new_run.inFile))
+            write_table(self.wl, self.f_bulge[:, z], path.join(obsDir, new_run.inFile))
             grid.runs.append(new_run)
         return grid
 
@@ -126,7 +122,7 @@ run_id = 'eBR_v20_q036.d13c512.ps03.k2.mC.CCM.Bgsd61'
 
 gm = GridManager(starlight_dir, 'data/decomposition.006.h5', decomp_id, run_id, galaxy_id)
 # HACK: do not take too long.
-gm.N_zone = 4
+gm.N_zone = 1
 
 
 runner = sr.StarlightRunner(n_workers=1)
