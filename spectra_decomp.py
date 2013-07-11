@@ -61,7 +61,11 @@ logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 
 t1 = time.time()
 logger.info('Computing model spectra...')
-f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(fit_params)
+mask = (decomp.pixelDistance__yx >= args.radClip) & decomp.qMask
+
+# HACK: Not sure if starlight likes zero-spectra.
+decomp.fill_value = 1.0
+f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(fit_params, mask)
 
 fit_l_obs = decomp.l_obs[fit_l_ix]
 f_syn__lyx = decomp.f_syn_fixed__lyx[fit_l_ix]

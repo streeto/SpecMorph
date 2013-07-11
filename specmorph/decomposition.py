@@ -133,12 +133,12 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def _getModelImage(self, model, x0, y0, pa, ba, mask=None):
-        shape = (self.N_y, self.N_x)
-        r__yx = getImageDistance(shape, x0, y0, pa, ba)
-        image = model(r__yx)
         if mask is None:
             mask = self.qMask
-        image[~mask] = np.nan
+        shape = (self.N_y, self.N_x)
+        r__yx = getImageDistance(shape, x0, y0, pa, ba)
+        image = np.ma.masked_where(~mask, model(r__yx))
+        image.fill_value = self.fill_value
         return image
 
         
@@ -153,8 +153,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             pa = p['pa']
             ba = p['ba']
 
-            bulge_spectra[i] = self._getModelImage(bulge_model, x0, y0, pa, ba, mask) * self.flux_unit
-            disk_spectra[i] = self._getModelImage(disk_model, x0, y0, pa, ba, mask) * self.flux_unit
+            bulge_spectra[i] = self._getModelImage(bulge_model, x0, y0, pa, ba, mask).filled() * self.flux_unit
+            disk_spectra[i] = self._getModelImage(disk_model, x0, y0, pa, ba, mask).filled() * self.flux_unit
         return bulge_spectra, disk_spectra
         
         
