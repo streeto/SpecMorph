@@ -9,6 +9,8 @@ from pystarlight.util.gridfile import GridFile, GridRun
 import numpy as np
 from os import path
 from pystarlight.util import starlight_runner as sr
+import argparse
+from multiprocessing import cpu_count
 
 
 
@@ -111,24 +113,37 @@ class GridManager(object):
 ###############################################################################
 
 
-#sr.starlight_exec_path = '/Users/andre/astro/qalifa/pystarlight/src/pystarlight/mock/mock_starlight.py'
+sr.starlight_exec_path = '/Users/andre/astro/qalifa/pystarlight/src/pystarlight/mock/mock_starlight.py'
 #sr.checker_exec_path = '/Users/andre/astro/starlight/starlight_checker'
 
-starlight_dir = 'data/starlight'
-galaxy_id = 'K0127'
-decomp_id = 'all_psf00_nocenter'
-run_id = 'eBR_v20_q036.d13c512.ps03.k2.mC.CCM.Bgsd61'
+parser = argparse.ArgumentParser(description='Run starlight for a B/D decomposition.')
 
+parser.add_argument('galaxyId', type=str, nargs=1,
+                    help='CALIFA galaxy ID. Ex.: K0001')
+parser.add_argument('runId', type=str, nargs=1,
+                    help='runId string. Ex.: eBR_v20_q036.d13c512.ps03.k2.mC.CCM.Bgsd61')
+parser.add_argument('--decomp-id', dest='decompId', default= 'all_psf00_nocenter',
+                    help='Decomposition label.')
+parser.add_argument('--db', dest='db', default='data/decomposition.006.h5',
+                    help='HDF5 database path.')
+parser.add_argument('--starlight-dir', dest='starlightDir', default='data/starlight',
+                    help='HDF5 database path.')
+parser.add_argument('--nproc', dest='nproc', type=int, default=cpu_count()-1,
+                    help='Number of worker processes.')
+parser.add_argument('--chunk-size', dest='chunkSize', type=int, default=1,
+                    help='Grid chunk size, defaults to the same as --nproc.')
 
-gm = GridManager(starlight_dir, 'data/decomposition.006.h5', decomp_id, run_id, galaxy_id)
-# HACK: do not take too long.
-gm.N_zone = 1
+args = parser.parse_args()
+galaxy_id = args.galaxyId[0]
+run_id = args.runId[0]
+nproc = args.nproc if args.nproc > 1 else 1
 
-
-runner = sr.StarlightRunner(n_workers=1)
-for grid in gm.getGrids(chunk_size=1):
+gm = GridManager(args.starlightDir, args.db, args.decompId, run_id, galaxy_id)
+gm.N_zone = 10
+runner = sr.StarlightRunner(n_workers=nproc)
+for grid in gm.getGrids(chunk_size=args.chunkSize):
+    print 'Dispatching grid.'
     runner.addGrid(grid)
-    print 'Dispatched grid'
 
 print 'Waiting jobs completion.'
 runner.wait()
