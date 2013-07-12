@@ -113,7 +113,7 @@ class GridManager(object):
 ###############################################################################
 
 
-sr.starlight_exec_path = '/Users/andre/astro/qalifa/pystarlight/src/pystarlight/mock/mock_starlight.py'
+#sr.starlight_exec_path = '/Users/andre/astro/qalifa/pystarlight/src/pystarlight/mock/mock_starlight.py'
 #sr.checker_exec_path = '/Users/andre/astro/starlight/starlight_checker'
 
 parser = argparse.ArgumentParser(description='Run starlight for a B/D decomposition.')
@@ -139,7 +139,6 @@ run_id = args.runId[0]
 nproc = args.nproc if args.nproc > 1 else 1
 
 gm = GridManager(args.starlightDir, args.db, args.decompId, run_id, galaxy_id)
-gm.N_zone = 10
 runner = sr.StarlightRunner(n_workers=nproc)
 for grid in gm.getGrids(chunk_size=args.chunkSize):
     print 'Dispatching grid.'
@@ -147,5 +146,10 @@ for grid in gm.getGrids(chunk_size=args.chunkSize):
 
 print 'Waiting jobs completion.'
 runner.wait()
-print 'Yay!'
+
+failed = runner.getFailedGrids()
+if len(failed) > 0:
+    print 'Failed to starlight:'
+    for grid in failed:
+        print '\n'.join(r.outFile for r in grid.runs)
 

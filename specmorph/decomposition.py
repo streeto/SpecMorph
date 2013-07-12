@@ -43,7 +43,8 @@ class MorphologyFitWrapper(object):
 ################################################################################
 class BulgeDiskDecomposition(fitsQ3DataCube):
 
-    def __init__(self, synthesisFile, smooth=True, target_vd=0.0, FWHM=0.0, purge_cache=False):
+    def __init__(self, synthesisFile, smooth=True, target_vd=0.0, FWHM=0.0, purge_cache=False, nproc=-1):
+        self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
         self.f_syn_fixed__lyx = self.zoneToYX(self.f_syn_fixed, extensive=True, surface_density=False)
@@ -92,7 +93,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
 
         
     def _getSpectraWithFixedVelocities(self, f, target_vd):
-        fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d)
+        print self._nproc
+        fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
         return fix_spectra(f, target_vd)
     
 
@@ -123,7 +125,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         try:
             if plot: raise Exception('Plotting in parallel mode is no allowed, faking error.')
             from joblib import Parallel, delayed
-            fit_params = Parallel(n_jobs=-1)(delayed(morphology_fit)(fl__yx) for fl__yx in spec_slices)
+            fit_params = Parallel(n_jobs=self._nproc)(delayed(morphology_fit)(fl__yx) for fl__yx in spec_slices)
         except:
             logger.warn('joblib not installed, falling back to serial processing.')
             fit_params = [morphology_fit(fl__yx) for fl__yx in spec_slices]

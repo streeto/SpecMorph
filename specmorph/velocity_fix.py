@@ -13,10 +13,11 @@ __all__ = ['SpectraVelocityFixer']
 ################################################################################
 class SpectraVelocityFixer(object):
     
-    def __init__(self, l_obs, v_0, v_d):
+    def __init__(self, l_obs, v_0, v_d, nproc=-1):
         self.l_obs = l_obs
         self.v_0 = np.asarray(v_0)
         self.v_d = np.asarray(v_d)
+        self.nproc = nproc
         
         
     def _params(self, flux, v_d):
@@ -36,7 +37,7 @@ class SpectraVelocityFixer(object):
 
         try:
             from joblib import Parallel, delayed
-            f_fixed = Parallel(n_jobs=-1)(delayed(fix_spectra)(args) for args in self._params(flux, vd_fix))
+            f_fixed = Parallel(n_jobs=self.nproc)(delayed(fix_spectra)(args) for args in self._params(flux, vd_fix))
         except:
             logger.warn('joblib not installed, falling back to serial processing.')
             f_fixed = [fix_spectra(args) for args in self._params(flux, vd_fix)]
