@@ -37,7 +37,7 @@ class SpectraVelocityFixer(object):
         try:
             from joblib import Parallel, delayed
             f_fixed = Parallel(n_jobs=self.nproc)(delayed(fix_spectra)(args) for args in self._params(flux, vd_fix))
-        except:
+        except ImportError:
             logger.warn('joblib not installed, falling back to serial processing.')
             f_fixed = [fix_spectra(args) for args in self._params(flux, vd_fix)]
 

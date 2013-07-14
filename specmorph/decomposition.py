@@ -126,7 +126,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             if plot: raise Exception('Plotting in parallel mode is no allowed, faking error.')
             from joblib import Parallel, delayed
             fit_params = Parallel(n_jobs=self._nproc)(delayed(morphology_fit)(fl__yx) for fl__yx in spec_slices)
-        except:
+        except ImportError:
             logger.warn('joblib not installed, falling back to serial processing.')
             fit_params = [morphology_fit(fl__yx) for fl__yx in spec_slices]
         fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
