@@ -117,25 +117,23 @@ class GalaxyModel(ParametricModel):
         return PSF_gaussian_convolve(self._sigma, r, bulge_disk_profile)
 
 
-    def unbound_deriv(self, params, r, dummy=None):
-        I_Be, R_e, I_D0, R_0 = params
+    def unbound_deriv(self, r, I_Be, R_e, I_D0, R_0):
         I_B = bulge_profile(r, I_Be, R_e)
         I_D = disk_profile(r, I_D0, R_0)
         d_I_Be = I_B / I_Be
         d_Re = I_B * (7.669 / 4.0 / R_e**1.25) * r**0.25
         d_I_D0 = I_D / I_D0
         d_R0 = I_D / R_0**2 * r
-        return np.array([d_I_Be, d_Re, d_I_D0, d_R0]).T
+        return [d_I_Be, d_Re, d_I_D0, d_R0]
 
         
-    def bound_deriv(self, params, r, dummy=None):
-        I_Be, R_e, I_D0, R_0 = params
-        d_I_Be, d_Re, d_I_D0, d_R0 = self.unbound_deriv(params, r).T
+    def bound_deriv(self, r, I_Be, R_e, I_D0, R_0):
+        d_I_Be, d_Re, d_I_D0, d_R0 = self.unbound_deriv(r, I_Be, R_e, I_D0, R_0).T
         d_I_Be = self._bound_deriv_param(self._I_Be, I_Be, d_I_Be)
         d_Re = self._bound_deriv_param(self._R_e, R_e, d_Re)
         d_I_D0 = self._bound_deriv_param(self._I_D0, I_D0, d_I_D0)
         d_R0 = self._bound_deriv_param(self._R_0, R_0, d_R0)
-        return np.array([d_I_Be, d_Re, d_I_D0, d_R0]).T
+        return [d_I_Be, d_Re, d_I_D0, d_R0]
 
 
     def _bound_deriv_param(self, param, value, deriv):
