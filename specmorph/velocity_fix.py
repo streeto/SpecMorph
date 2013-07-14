@@ -4,7 +4,6 @@ Created on Jun 27, 2013
 @author: andre
 '''
 
-from gauss_smooth import gaussVelocitySmooth  # @UnresolvedImport
 from pycasso.util import logger
 import numpy as np
 
@@ -47,6 +46,7 @@ class SpectraVelocityFixer(object):
 
 ################################################################################
 def fix_spectra(args):
+    from gauss_smooth import gaussVelocitySmooth  # @UnresolvedImport
     l_obs, flux, v_0, v_d = args
     return gaussVelocitySmooth(l_obs, flux, -v_0, v_d)
 ################################################################################

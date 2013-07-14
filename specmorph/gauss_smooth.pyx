@@ -7,6 +7,7 @@ from __future__ import division
 import numpy as np
 cimport numpy as np
 
+__all__ = ['gaussVelocitySmooth']
 
 cdef extern from 'math.h':
     double exp(double x)
