@@ -47,7 +47,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
-        self.f_syn_fixed__lyx = self.zoneToYX(self.f_syn_fixed, extensive=True, surface_density=False)
+        self.f_syn_rest__lyx = self.zoneToYX(self.f_syn_rest__lz, extensive=True, surface_density=False)
+        self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
         self._sigma = FWHM / FWHM_to_sigma_factor
     
     
@@ -57,7 +58,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             from tables import Float64Atom  # @UnresolvedImport
         except:
             logger.warn('Pytables not installed, rest frame spectra cache disabled.')
-            self.f_syn_fixed = self._getSpectraWithFixedVelocities(self.f_syn, target_vd)
+            self._calcRestFrameSpectra(target_vd)
             return
 
         if path.exists(filename):
@@ -67,7 +68,10 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             else:            
                 f = openFile(filename, 'r')
                 try:
-                    self.f_syn_fixed = f.root.f_syn_fixed[...]
+                    self.f_syn_rest__lz = f.root.f_syn_rest__lz[...]
+                    self.f_obs_rest__lz = f.root.f_obs_rest__lz[...]
+                    self.f_err_rest__lz = f.root.f_err_rest__lz[...]
+                    self.f_flag_rest__lz = f.root.f_flag_rest__lz[...]
                     logger.debug('Rest frame spectra cache loaded successfully.')
                     return
                 except:
@@ -79,35 +83,47 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         else:
             logger.warn('Rest frame spectra cache not found.')
 
-        logger.warn('Computing cache from scratch... (go take a coffee)')
+        self._calcRestFrameSpectra(target_vd)
         f = openFile(filename, 'w')
         try:
-            self.f_syn_fixed = self._getSpectraWithFixedVelocities(self.f_syn, target_vd)
-            logger.warn('Done.')
-            ca = f.createCArray('/', 'f_syn_fixed', Float64Atom(),
-                                self.f_syn_fixed.shape, filters=Filters(1, 'blosc'))
-            ca[...] = self.f_syn_fixed
+            ca = f.createCArray('/', 'f_syn_rest__lz', Float64Atom(),
+                                self.f_syn_rest__lz.shape, filters=Filters(1, 'blosc'))
+            ca[...] = self.f_syn_rest__lz
+            ca = f.createCArray('/', 'f_obs_rest__lz', Float64Atom(),
+                                self.f_obs_rest__lz.shape, filters=Filters(1, 'blosc'))
+            ca[...] = self.f_obs_rest__lz
+            ca = f.createCArray('/', 'f_err_rest__lz', Float64Atom(),
+                                self.f_err_rest__lz.shape, filters=Filters(1, 'blosc'))
+            ca[...] = self.f_err_rest__lz
+            ca = f.createCArray('/', 'f_flag_rest__lz', Float64Atom(),
+                                self.f_flag_rest__lz.shape, filters=Filters(1, 'blosc'))
+            ca[...] = self.f_flag_rest__lz
             
         finally:
             f.close()
 
-        
-    def _getSpectraWithFixedVelocities(self, f, target_vd):
-        print self._nproc
-        fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
-        return fix_spectra(f, target_vd)
-    
 
+    def _calcRestFrameSpectra(self, target_vd):
+        fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
+        logger.warn('Computing rest frame spectra from scratch... (go take a coffee)')
+        self.f_syn_rest__lz = fix_spectra(self.f_syn, target_vd)
+        self.f_obs_rest__lz = fix_spectra(self.f_obs, target_vd)
+        self.f_err_rest__lz = fix_spectra(self.f_err, target_vd)
+        # flag anything that touched a flagged pixel.
+        self.f_flag_rest__lz = np.where(fix_spectra(self.f_flag, target_vd) > 0.0, 1.0, 0.0)
+        logger.warn('Done.')
+    
+    
     def _getSpectraSlice(self, l1, l2=None):
         if l1 < 0:
             l1 = 0
         if l2 >= self.Nl_obs:
             l2 = self.Nl_obs - 1
         if (l1 == l2) or (l2 is None):
-            return self.f_syn_fixed__lyx[l1] / self.flux_unit
+            return self.f_syn_rest__lyx[l1] / self.flux_unit
         else:
             nl = l2 - l1
-            return self.f_syn_fixed__lyx[l1:l2].sum(axis=0) / nl / self.flux_unit
+            return self.f_syn_rest__lyx[l1:l2].sum(axis=0) / nl / self.flux_unit
 
 
     def specSlicer(self, step, box_radius):

@@ -15,18 +15,20 @@ from multiprocessing import cpu_count
 
 
 ###############################################################################
-def write_table(wl, flux, filename):
-    ascii.write([wl, flux], filename, Writer=ascii.NoHeader)
+def write_table(wl, flux, err, flags, filename):
+    ascii.write([wl, flux, err, flags], filename, Writer=ascii.NoHeader)
 ###############################################################################
 
 
 ###############################################################################
 class GridManager(object):
     
-    def __init__(self, starlight_dir, decomp_file, decomp_id, run_id, galaxy_id):
+    def __init__(self, starlight_dir, decomp_file, decomp_id, run_id, galaxy_id, spec_type='f_obs'):
+        self.specType = spec_type
         self.starlightDir = starlight_dir
         self.basesDir = 'BasesDir'
         self.obsDir = 'input'
+        self.obsDir_fullpath = path.join(self.starlightDir, self.obsDir)
         self.outDir = 'output'
         self.maskDir = '.'
         self.etcDir = '.'
@@ -36,30 +38,35 @@ class GridManager(object):
         groupId = run_id.replace('.', '_')   
         f = tables.openFile(decomp_file)
         grp = f.getNode('/%s/%s/%s' % (decomp_id,groupId, galaxy_id))
-        self.wl = grp.wavelength[:]
+        self.l_obs = grp.l_obs[:]
         
         t = grp.fit_parameters
         self.flux_unit = t.attrs.flux_unit
         self.distance_Mpc = t.attrs.distance_Mpc
         
-        self.N_zone = grp.zone_synth_spectra.shape[1] + 1
-        self.Nl_obs = self.wl.shape[0]
-        shape = (self.Nl_obs, self.N_zone)
-        self.f_syn = np.empty(shape, dtype='float64')
-        self.f_bulge = np.empty(shape, dtype='float64')
-        self.f_disk = np.empty(shape, dtype='float64')
+        self.N_zone = grp.f__lz.f_obs.shape[1] + 1
+        self.Nl_obs = self.l_obs.shape[0]
         
-        # Normalize by flux_unit
-        self.f_syn[:, 1:] = grp.zone_synth_spectra[...] / self.flux_unit
-        self.f_bulge[:, 1:] = grp.zone_bulge_spectra[...] / self.flux_unit
-        self.f_disk[:, 1:] = grp.zone_disk_spectra[...] / self.flux_unit
-        
-        # Integrated spectra
-        self.f_syn[:,0] = self.f_syn[:, 1:].sum(axis=1)
-        self.f_bulge[:,0] = self.f_bulge[:, 1:].sum(axis=1)
-        self.f_disk[:,0] = self.f_disk[:, 1:].sum(axis=1)
-        
+        self.f__lz = self._getZoneSpectra(grp.f__lz, grp.i_f__l)
+        self.f_bulge__lz = self._getZoneSpectra(grp.f_bulge__lz, grp.i_f_bulge__l)
+        self.f_disk__lz = self._getZoneSpectra(grp.f_disk__lz, grp.i_f_disk__l)
+
         f.close()
+
+    
+    def _getZoneSpectra(self, grp, igrp):
+        shape = (self.Nl_obs, self.N_zone)
+        dtype = np.dtype([('f_obs', 'float64'), ('f_syn', 'float64'), ('f_err', 'float64'), ('f_flag', 'float64')])
+        zspec = np.empty(shape, dtype=dtype)
+        zspec[:, 1:]['f_obs'] = grp.f_obs[...] / self.flux_unit
+        zspec[:, 1:]['f_syn'] = grp.f_syn[...] / self.flux_unit
+        zspec[:, 1:]['f_err'] = grp.f_err[...] / self.flux_unit
+        zspec[:, 1:]['f_flag'] = grp.f_flag[...]
+        zspec[:,0]['f_obs'] = igrp.f_obs[...] / self.flux_unit
+        zspec[:,0]['f_syn'] = igrp.f_syn[...] / self.flux_unit
+        zspec[:,0]['f_err'] = igrp.f_err[...] / self.flux_unit
+        zspec[:,0]['f_flag'] = igrp.f_flag[...]
+        return zspec
         
         
     def _getGrid(self, zone1, zone2):
@@ -77,33 +84,25 @@ class GridManager(object):
         grid.fluxUnit = self.flux_unit
         run_template = grid.runs.pop()
         
-        obsDir = path.join(self.starlightDir, self.obsDir) 
         for z in xrange(zone1, zone2):
             if z >= self.N_zone:
                 break
-            print 'Created inputs for zone %d' % z
-    
-            new_run = GridRun.sameAs(run_template)
-            new_run.inFile = '%s_%04d_%s.syn.in' % (self.galaxyId, z, self.runId)
-            new_run.outFile = '%s_%04d_%s.syn.out' % (self.galaxyId, z, self.runId)
-            new_run.lumDistanceMpc = self.distance_Mpc
-            write_table(self.wl, self.f_syn[:, z], path.join(obsDir, new_run.inFile))
-            grid.runs.append(new_run)
-
-            new_run = GridRun.sameAs(run_template)
-            new_run.inFile = '%s_%04d_%s.disk.in' % (self.galaxyId, z, self.runId)
-            new_run.outFile = '%s_%04d_%s.disk.out' % (self.galaxyId, z, self.runId)
-            new_run.lumDistanceMpc = self.distance_Mpc
-            write_table(self.wl, self.f_disk[:, z], path.join(obsDir, new_run.inFile))
-            grid.runs.append(new_run)
-
-            new_run = GridRun.sameAs(run_template)
-            new_run.inFile = '%s_%04d_%s.bulge.in' % (self.galaxyId, z, self.runId)
-            new_run.outFile = '%s_%04d_%s.bulge.out' % (self.galaxyId, z, self.runId)
-            new_run.lumDistanceMpc = self.distance_Mpc
-            write_table(self.wl, self.f_bulge[:, z], path.join(obsDir, new_run.inFile))
-            grid.runs.append(new_run)
+            print 'Creating inputs for zone %d' % z
+            grid.runs.append(self._createRun(z, 'total', self.f__lz, run_template))
+            grid.runs.append(self._createRun(z, 'bulge', self.f_bulge__lz, run_template))
+            grid.runs.append(self._createRun(z, 'disk', self.f_bulge__lz, run_template))
         return grid
+
+
+    def _createRun(self, z, suffix, spectra, run_template):
+        new_run = GridRun.sameAs(run_template)
+        new_run.inFile = '%s_%04d_%s.%s.%s.in' % (self.galaxyId, z, self.runId, self.specType, suffix)
+        new_run.outFile = '%s_%04d_%s.%s.%s.out' % (self.galaxyId, z, self.runId, self.specType, suffix)
+        new_run.lumDistanceMpc = self.distance_Mpc
+        write_table(self.l_obs, spectra[:, z][self.specType],
+                    spectra[:, z]['f_err'], spectra[:, z]['f_flag'],
+                    path.join(self.obsDir_fullpath, new_run.inFile))
+        return new_run
 
 
     def getGrids(self, chunk_size):
@@ -132,14 +131,20 @@ parser.add_argument('--nproc', dest='nproc', type=int, default=cpu_count()-1,
                     help='Number of worker processes.')
 parser.add_argument('--chunk-size', dest='chunkSize', type=int, default=1,
                     help='Grid chunk size, defaults to the same as --nproc.')
-
+parser.add_argument('--timeout', dest='timeout', type=int, default=20,
+                    help='Timeout of starlight processes, in minutes. Defaults to 20.')
+parser.add_argument('--spectra-type', dest='spectraType', default='f_obs',
+                    help='Spectra type, defaults to f_obs (observed spectra).')
 args = parser.parse_args()
 galaxy_id = args.galaxyId[0]
 run_id = args.runId[0]
 nproc = args.nproc if args.nproc > 1 else 1
 
+print 'Loading grid manager.'
 gm = GridManager(args.starlightDir, args.db, args.decompId, run_id, galaxy_id)
-runner = sr.StarlightRunner(n_workers=nproc)
+print 'Number of zones: %d' % gm.N_zone
+print 'Starting starlight runner.'
+runner = sr.StarlightRunner(n_workers=nproc, timeout=args.timeout * 60.0)
 for grid in gm.getGrids(chunk_size=args.chunkSize):
     print 'Dispatching grid.'
     runner.addGrid(grid)
