@@ -90,7 +90,7 @@ class GridManager(object):
             print 'Creating inputs for zone %d' % z
             grid.runs.append(self._createRun(z, 'total', self.f__lz, run_template))
             grid.runs.append(self._createRun(z, 'bulge', self.f_bulge__lz, run_template))
-            grid.runs.append(self._createRun(z, 'disk', self.f_bulge__lz, run_template))
+            grid.runs.append(self._createRun(z, 'disk', self.f_disk__lz, run_template))
         return grid
 
 
