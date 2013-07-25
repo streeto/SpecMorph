@@ -141,7 +141,7 @@ run_id = args.runId[0]
 nproc = args.nproc if args.nproc > 1 else 1
 
 print 'Loading grid manager.'
-gm = GridManager(args.starlightDir, args.db, args.decompId, run_id, galaxy_id)
+gm = GridManager(args.starlightDir, args.db, args.decompId, run_id, galaxy_id, spec_type=args.spectraType)
 print 'Number of zones: %d' % gm.N_zone
 print 'Starting starlight runner.'
 runner = sr.StarlightRunner(n_workers=nproc, timeout=args.timeout * 60.0)
