@@ -7,10 +7,9 @@ Created on Jun 6, 2013
 import numpy as np
 from scipy import ndimage
 
-from astropy.modeling import ParametricModel, Parameter
-from astropy.modeling.core import _convert_input, _convert_output
+from astropy.modeling import Parametric1DModel
 
-__all__ = ['BulgeModel2D', 'DiskModel2D', 'GalaxyModel']
+__all__ = ['BulgeModel', 'DiskModel', 'GalaxyModel', 'PSF1d_gaussian_convolve']
 
 ################################################################################
 def disk_profile(r, I_D0, R_0):
@@ -21,100 +20,69 @@ def bulge_profile(r, I_Be, R_e):
     return I_Be * np.exp(-7.669 * ((r / R_e)**0.25 - 1))
 
 
-def test_profile(r):
-    return 1.0 * np.exp(-7.669 * ((r / 5.0)**0.25 - 1))
 
-def PSF_gaussian_convolve(sigma, r, func):
+def PSF1d_gaussian_convolve(sigma, r, func):
     if sigma == 0.0:
         return func(r)
-    _r = np.arange(0.1, r.max())
+    
+    subpix_resolution = 10.0
+    r_min = r.min()
+    _r = np.arange(r_min, r.max(), 1/subpix_resolution)
+
     _I = func(_r)
-    _I = ndimage.gaussian_filter(_I, sigma, mode='reflect')
+    _I = ndimage.gaussian_filter1d(_I, subpix_resolution*sigma, mode='reflect')
     return np.interp(r, _r, _I)
 ################################################################################
 
 
 ################################################################################
-class BulgeModel2D(ParametricModel):
+class BulgeModel(Parametric1DModel):
     param_names = ['I_Be', 'R_e']
 
-    def __init__(self, I_Be, R_e, sigma, param_dim=1):
-        self._I_Be = Parameter(name='I_Be', val=I_Be, mclass=self, param_dim=param_dim)
-        self._R_e = Parameter(name='R_e', val=R_e, mclass=self, param_dim=param_dim)
-        self._sigma = sigma
-        ParametricModel.__init__(self, self.param_names, n_inputs=1, n_outputs=1, param_dim=param_dim)
-        self.linear = False
+    def __init__(self, I_Be, R_e, **cons):
+        super(BulgeModel, self).__init__(locals(), **cons)
         self.deriv = None
 
 
-    def eval(self, r, params):
-        I_Be, R_e = params
-        I_B = bulge_profile(r, I_Be, R_e)
-        return ndimage.gaussian_filter(I_B, self._sigma)
-
-                                  
-    def __call__(self, r):
-        r, fmt = _convert_input(r, self.param_dim)
-        result = self.eval(r, self.param_sets)
-        return _convert_output(result, fmt)
+    def eval(self, r, I_Be, R_e):
+        return bulge_profile(r, I_Be, R_e)
 ################################################################################
 
     
 ################################################################################
-class DiskModel2D(ParametricModel):
+class DiskModel(Parametric1DModel):
     param_names = ['I_D0', 'R_0']
 
-    def __init__(self, I_D0, R_0, sigma, param_dim=1):
-        self._I_D0 = Parameter(name='I_D0', val=I_D0, mclass=self, param_dim=param_dim)
-        self._R_0 = Parameter(name='R_0', val=R_0, mclass=self, param_dim=param_dim)
-        self._sigma = sigma
-        ParametricModel.__init__(self, self.param_names, n_inputs=1, n_outputs=1, param_dim=param_dim)
-        self.linear = False
+    def __init__(self, I_D0, R_0, **cons):
+        super(DiskModel, self).__init__(locals(), **cons)
         self.deriv = None
 
 
-    def eval(self, r, params):
-        I_D0, R_0 = params
-        I_D = disk_profile(r, I_D0, R_0)
-        return ndimage.gaussian_filter(I_D, self._sigma)
-
-
-    def __call__(self, r):
-        r, fmt = _convert_input(r, self.param_dim)
-        result = self.eval(r, self.param_sets)
-        return _convert_output(result, fmt)
+    def eval(self, r, I_D0, R_0):
+        return disk_profile(r, I_D0, R_0)
 ################################################################################
 
 
 
 ################################################################################
-class GalaxyModel(ParametricModel):
+class GalaxyModel(Parametric1DModel):
     param_names = ['I_Be', 'R_e', 'I_D0', 'R_0']
     R2 = None
 
 
     def __init__(self, I_Be, R_e, I_D0, R_0, sigma, **cons):
-        try:
-            param_dim = len(I_Be)
-        except TypeError:
-            param_dim = 1
-        self._I_Be = Parameter(name='I_Be', val=I_Be, mclass=self, param_dim=param_dim)
-        self._R_e = Parameter(name='R_e', val=R_e, mclass=self, param_dim=param_dim)
-        self._I_D0 = Parameter(name='I_D0', val=I_D0, mclass=self, param_dim=param_dim)
-        self._R_0 = Parameter(name='R_0', val=R_0, mclass=self, param_dim=param_dim)
+        super(GalaxyModel, self).__init__(locals(), **cons)
         self._sigma = sigma
-        ParametricModel.__init__(self, self.param_names, n_inputs=1, n_outputs=1, param_dim=param_dim, **cons)
         self.linear = False
-        self.deriv = self.unbound_deriv
+        self.deriv = None
 
 
-    def eval(self, r, params):
-        I_Be, R_e, I_D0, R_0 = params
+    def eval(self, r, I_Be, R_e, I_D0, R_0):
         def bulge_disk_profile(r):
             I_B = bulge_profile(r, I_Be, R_e)
             I_D = disk_profile(r, I_D0, R_0)
             return I_B + I_D
-        return PSF_gaussian_convolve(self._sigma, r, bulge_disk_profile)
+        return PSF1d_gaussian_convolve(self._sigma, r, bulge_disk_profile)
 
 
     def unbound_deriv(self, r, I_Be, R_e, I_D0, R_0):
@@ -137,22 +105,17 @@ class GalaxyModel(ParametricModel):
 
 
     def _bound_deriv_param(self, param, value, deriv):
+        # FIXME: why these, you ask? No idea, it just fitted better this way.
         lo_threshold = 0.2
         hi_threshold = 0.8
         k = 1000.0
         vmin, vmax = self.constraints.bounds[param._name]
-        v = value - vmin / (vmax - vmin)
+        v = (value - vmin) / (vmax - vmin)
         if v < lo_threshold:
-            return deriv + k * (v - lo_threshold)**4
+            return deriv - k * (v - lo_threshold)**4
         elif v > hi_threshold:
             return deriv + k * (v - hi_threshold)**4
         return deriv
-
-
-    def __call__(self, r):
-        r, fmt = _convert_input(r, self.param_dim)
-        result = self.eval(r, self.param_sets)
-        return _convert_output(result, fmt)
 ################################################################################
 
 

@@ -8,9 +8,10 @@ from pycasso import fitsQ3DataCube
 from pycasso.util import logger, getImageDistance
 import numpy as np
 from os import path, unlink
+from astropy import nddata
 
 from .fitting import BulgeDiskFitter
-from .model import BulgeModel2D, DiskModel2D
+from .model import BulgeModel, DiskModel
 from .velocity_fix import SpectraVelocityFixer
 
 __all__ = ['BulgeDiskDecomposition']
@@ -29,14 +30,24 @@ class MorphologyFitWrapper(object):
         self.mode = mode
         self.plot = plot
 
-    def __call__(self, fl__yx):
-        fitter = BulgeDiskFitter(fl__yx)
+    def __call__(self, fl__yx, var__yx=None):
+        fitter = BulgeDiskFitter(fl__yx, var__yx)
         fitter.setup(x0=self.x0, y0=self.y0, sigma=self.sigma,
                      rad_clip_in=self.rad_clip_in, rad_clip_out=self.rad_clip_out)
         fitter.fitModel(self.mode)
         if self.plot:
             fitter.plot_model(self.mode, interactive=False)
         return fitter.getFitParams()
+################################################################################
+
+
+################################################################################
+def gaussian2d_kernel(sigma):
+    center = int(4.0 * sigma)
+    fw = 2 * center + 1
+    xx, yy = np.indices((fw, fw), dtype='int')
+    rr2 = (xx - center)**2 + (yy - center)**2
+    return np.exp(- 0.5 * rr2 / sigma**2) / (2.0 * np.pi * sigma**2)
 ################################################################################
 
 
@@ -49,6 +60,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
         self.f_syn_rest__lyx = self.zoneToYX(self.f_syn_rest__lz, extensive=True, surface_density=False)
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
+        self.f_err_rest__lyx = self.zoneToYX(self.f_err_rest__lz, extensive=True, surface_density=False)
         self._sigma = FWHM / FWHM_to_sigma_factor
     
     
@@ -120,10 +132,13 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         if l2 >= self.Nl_obs:
             l2 = self.Nl_obs - 1
         if (l1 == l2) or (l2 is None):
-            return self.f_syn_rest__lyx[l1] / self.flux_unit
+            f = self.f_syn_rest__lyx[l1] / self.flux_unit
+            var = (self.f_err_rest__lyx[l1] / self.flux_unit)**2
         else:
-            nl = l2 - l1
-            return self.f_syn_rest__lyx[l1:l2].sum(axis=0) / nl / self.flux_unit
+            w = self.flux_unit**2 / self.f_err_rest__lyx[l1:l2]**2
+            var = 1.0 / w.sum(axis=0)
+            f = (self.f_syn_rest__lyx[l1:l2] / self.flux_unit * w).sum(axis=0) * var
+        return f, var
 
 
     def specSlicer(self, step, box_radius):
@@ -139,12 +154,12 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         morphology_fit = MorphologyFitWrapper(self.x0, self.y0, self._sigma, rad_clip_in, rad_clip_out, mode, plot=plot)
         spec_slices = self.specSlicer(step, box_radius)
         try:
-            if plot: raise Exception('Plotting in parallel mode is no allowed, faking error.')
+            if plot: raise UserWarning('Plotting in parallel mode is no allowed, faking error.')
             from joblib import Parallel, delayed
-            fit_params = Parallel(n_jobs=self._nproc)(delayed(morphology_fit)(fl__yx) for fl__yx in spec_slices)
-        except ImportError:
-            logger.warn('joblib not installed, falling back to serial processing.')
-            fit_params = [morphology_fit(fl__yx) for fl__yx in spec_slices]
+            fit_params = Parallel(n_jobs=self._nproc)(delayed(morphology_fit)(fl, var) for fl, var in spec_slices)
+        except (ImportError, UserWarning):
+            logger.warn('Falling back to serial processing.')
+            fit_params = [morphology_fit(fl, var) for fl, var in spec_slices]
         fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
         return fit_params, selected_wl_ix
@@ -163,16 +178,22 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     def getModelSpectra(self, params, mask=None):
         bulge_spectra = np.empty((len(params), self.N_y, self.N_x))
         disk_spectra = np.empty((len(params), self.N_y, self.N_x))
+
+        PSF = gaussian2d_kernel(self._sigma)        
         for i, p in enumerate(params):
-            bulge_model = BulgeModel2D(p['I_Be'], p['R_e'], self._sigma)
-            disk_model = DiskModel2D(p['I_D0'], p['R_0'], self._sigma)
+            bulge_model = BulgeModel(p['I_Be'], p['R_e'])
+            disk_model = DiskModel(p['I_D0'], p['R_0'])
             x0 = p['x0']
             y0 = p['y0']
             pa = p['pa']
             ba = p['ba']
 
             bulge_spectra[i] = self._getModelImage(bulge_model, x0, y0, pa, ba, mask).filled() * self.flux_unit
+            # FIXME: bulge spectra does not behave at the center
+            bulge_spectra[i, self.y0, self.x0] = np.nan
+            bulge_spectra[i] = nddata.convolve(bulge_spectra[i], PSF, boundary='extend')
             disk_spectra[i] = self._getModelImage(disk_model, x0, y0, pa, ba, mask).filled() * self.flux_unit
+            disk_spectra[i] = nddata.convolve(disk_spectra[i], PSF, boundary='extend')
         return bulge_spectra, disk_spectra
         
         

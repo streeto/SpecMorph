@@ -35,9 +35,9 @@ parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
                     help='Spectral running average box radius.')
 parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
                     help='Spectral running average box step.')
-parser.add_argument('--rad-clip', dest='radClip', type=float, default=2.5,
+parser.add_argument('--rad-clip', dest='radClip', type=float, default=0.0,
                     help='Radial clip in arc seconds (float).')
-parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=0.0,
+parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=3.6,
                     help='PSF FWHM in arcseconds.')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')

@@ -8,7 +8,7 @@ from astropy.modeling import fitting
 from pycasso.util import getEllipseParams, getImageDistance, radialProfile, logger
 import numpy as np
 from numpy import ma
-from .model import *
+from .model import BulgeModel, DiskModel, GalaxyModel, PSF1d_gaussian_convolve
 
 __all__ = ['BulgeDiskFitter']
 
@@ -16,7 +16,7 @@ __all__ = ['BulgeDiskFitter']
 class BulgeDiskFitter(object):
     _model = None
     _sigma = 1.5
-    _pixel_fraction = 0.1
+    _pixel_fraction = 0.2
     _param_dtype = np.dtype([('I_Be', 'float64'), ('R_e', 'float64'),
                              ('I_D0', 'float64'), ('R_0', 'float64'),
                              ('R2', 'float64'),
@@ -46,8 +46,9 @@ class BulgeDiskFitter(object):
         return cls._param_dtype
         
         
-    def __init__(self, f__yx):
+    def __init__(self, f__yx, var_f__yx=None):
         self.f__yx = f__yx
+        self.var_f__yx = var_f__yx
 
 
     def setup(self, x0=None, y0=None, pa=None, ba=None, sigma=0.0, rad_clip_in=0.0, rad_clip_out=None):
@@ -66,6 +67,7 @@ class BulgeDiskFitter(object):
         self._sigma = sigma
         self.min_rad = max(rad_clip_in, self._pixel_fraction) 
         self.max_rad = rad_clip_out
+        # FIXME: use circular aperture for radial clip.
         self.f__yx[self.pixelDistance < self.min_rad] = ma.masked
         if self.max_rad is not None:
             self.f__yx[self.pixelDistance > self.max_rad] = ma.masked
@@ -89,24 +91,27 @@ class BulgeDiskFitter(object):
 
 
     def _getRadialProfileScatter(self):
-        f = self.f__yx.compressed()
         r = self.pixelDistance.compressed()
-        
-        # Sort the distances, or the fitting goes nuts
         sort_ix = np.argsort(r)
         r = r[sort_ix]
-        
-        # Sorted fluxes
-        f = f[sort_ix]
-        return r, f
+        f = self.f__yx.compressed()[sort_ix]
+        var = self.var_f__yx.compressed()[sort_ix] if self.var_f__yx is not None else None
+        return r, f, var
     
 
     def _getRadialProfileMean(self):
         bin_r = np.arange(self.min_rad, self.max_rad, self._pixel_fraction)
         bin_center = (bin_r[:-1] + bin_r[1:]) / 2.0
-        f__r = radialProfile(self.f__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='mean')
+        if self.var_f__yx is None:
+            f__r = radialProfile(self.f__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='mean')
+            var__r = radialProfile(self.f__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='var')
+        else:
+            w__yx = 1.0 / self.var_f__yx
+            var__r = 1.0 / radialProfile(w__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='sum')
+            f__r = radialProfile(self.f__yx * w__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='sum') * var__r
+            
         r = ma.array(bin_center, mask=f__r.mask)
-        return r.compressed(), f__r.compressed()
+        return r.compressed(), f__r.compressed(), var__r.compressed()
     
 
     def _getRadialProfile(self, mode='scatter'):
@@ -117,7 +122,7 @@ class BulgeDiskFitter(object):
         
         
     def fitModel(self, mode='scatter', guess=None):
-        r, f = self._getRadialProfile(mode)
+        r, f, var = self._getRadialProfile(mode)
         if guess is not None:
             I_Be, R_e, I_D0, R_0 = guess[:4]
         else:
@@ -139,7 +144,7 @@ class BulgeDiskFitter(object):
             model = GalaxyModel(I_Be, R_e, I_D0, R_0, self._sigma)
             
         fit = fitting.NonLinearLSQFitter(model)
-        fit(r, f)
+        fit(r, f, weights=1.0/var)
         self._model = model
         self.R2 = self._R2(r, f)
 
@@ -190,21 +195,21 @@ class BulgeDiskFitter(object):
             logger.warn('Plotting only works when running in debug mode.')
             return
         self._assureFitted()
-        bulge_model = BulgeModel2D(self.I_Be, self.R_e, 0.0)
-        disk_model = DiskModel2D(self.I_D0, self.R_0, 0.0)
+        bulge_model = BulgeModel(self.I_Be, self.R_e)
+        disk_model = DiskModel(self.I_D0, self.R_0)
         logger.debug(self._model)
-        r, f = self._getRadialProfile(mode)
+        r, f, var = self._getRadialProfile(mode)
         import matplotlib.pyplot as plt
         plt.interactive(interactive)
         if figure is None:
             figure=plt.figure()        
         plt.clf()
         ax = plt.subplot(111)
-        r_model = np.arange(1, r.max())
-        ax.plot(r, np.log10(f), 'b.')
+        r_model = np.arange(r.min(), r.max(), 0.1)
+        ax.errorbar(r, np.log10(f), yerr=np.sqrt(var)/f, fmt='o')
         ax.plot(r_model, np.log10(self._model(r_model)), 'r-')
-        ax.plot(r_model, np.log10(bulge_model(r_model)), 'r:')
-        ax.plot(r_model, np.log10(disk_model(r_model)), 'r--')
+        ax.plot(r_model, np.log10(PSF1d_gaussian_convolve(self._sigma, r_model, bulge_model)), 'r:')
+        ax.plot(r_model, np.log10(PSF1d_gaussian_convolve(self._sigma, r_model, disk_model)), 'r--')
 #         ax.set_ylim(np.log10(f.min()), np.log10(f.max()))
         ax.set_title(title)
         ax.text(0.75, 0.9, r'$R^2 = %.4f$' % self.R2, transform=ax.transAxes)
