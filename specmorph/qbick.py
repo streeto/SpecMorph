@@ -5,14 +5,15 @@ Created on Jul 22, 2013
 '''
 
 import numpy as np
+from scipy.signal import detrend
 
-__all__ =['integrated_spec', 'flag_big_error', 'flag_small_error']
+__all__ = ['integrated_spec', 'flag_big_error', 'flag_small_error']
 
-tsfe=0.1
-tbfe=5.0
-inf=11
-ibe=13
-ise=9
+tsfe = 0.1
+tbfe = 5.0
+inf = 11
+ibe = 13
+ise = 9
 
 def areafactor(area, M=15.0):
     '''
@@ -53,18 +54,30 @@ def integrated_spec(f_obs, f_err, f_flag):
     i_f_obs = f_obs.sum(axis=1)
     i_f_err, i_f_flag = get_sperf_sum(f_err, f_flag, N_zone, beta__z)
     # Flag assignment
-    i_f_flag[np.where(i_f_flag>0)] = inf
-    fber_sum = np.where(i_f_err > tbfe*abs(i_f_obs), ibe, 0.0)
-    sm_err   = np.median(i_f_err[np.where((i_f_obs > 0.0) & (i_f_err > 0.0) & (fber_sum < 1.0) & (i_f_flag < 1.0))])
-    fser_sum = np.where(i_f_err < tsfe*sm_err, ise, 0.0)        # Flag for small Errors
-    i_f_flag = i_f_flag + fber_sum + fser_sum     # Total flag
+    i_f_flag[np.where(i_f_flag > 0)] = inf
+    fber_sum = np.where(i_f_err > tbfe * abs(i_f_obs), ibe, 0.0)
+    sm_err = np.median(i_f_err[np.where((i_f_obs > 0.0) & (i_f_err > 0.0) & (fber_sum < 1.0) & (i_f_flag < 1.0))])
+    fser_sum = np.where(i_f_err < tsfe * sm_err, ise, 0.0)  # Flag for small Errors
+    i_f_flag = i_f_flag + fber_sum + fser_sum  # Total flag
     return i_f_obs, i_f_err, i_f_flag
 
 
 def flag_big_error(f_obs, f_err):
-    return np.where(f_err > tbfe*abs(f_obs), ibe, 0.0)
+    return np.where(f_err > tbfe * abs(f_obs), ibe, 0.0)
 
 
 def flag_small_error(f_obs, f_err, f_flag):
     m_err = np.median(f_err[np.where((f_obs > 0.0) & (f_err > 0.0) & (f_flag < 1.0))]) 
-    return np.where(f_err < tsfe*m_err, ise, 0.0)
+    return np.where(f_err < tsfe * m_err, ise, 0.0)
+
+
+def calc_sn(f, flag):
+    if isinstance(f, np.ma.MaskedArray):
+        f = f.copy()
+    else:
+        f = np.ma.array(f, copy=True, fill_value=np.nan)
+    f[(flag > 0)] = np.ma.masked
+
+    signal = np.ma.median(f, axis=0)
+    noise = np.ma.std(detrend(f, axis=0), axis=0)
+    return signal, noise, signal / noise

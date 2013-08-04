@@ -6,7 +6,7 @@ Created on Jun 6, 2013
 
 from pycasso.util import logger
 from specmorph import BulgeDiskDecomposition
-from specmorph.qbick import integrated_spec, flag_big_error, flag_small_error
+from specmorph.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
 
 from tables import openFile, Filters
 import numpy as np
@@ -15,8 +15,72 @@ from os import path
 import argparse
 import time
 from tables.atom import Atom
+import pyfits
 
 
+################################################################################
+def get_planes_image(f__lz, l_mask, decomp):
+    planes = {}
+    f_obs = f__lz['f_obs'][l_mask]
+    f_flag = f__lz['f_flag'][l_mask]
+    f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False)
+    f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False)
+    
+    _, qZoneNoise__z, qZoneSn__z = calc_sn(f_obs, f_flag)
+    planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False)
+    planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False)
+    
+    signal, noise, sn = calc_sn(f_obs__lyx, f_flag__lyx)
+    planes['Signal'] = np.ma.array(signal, mask=~decomp.qMask, fill_value=0.0)
+    planes['Noise'] = np.ma.array(noise, mask=~decomp.qMask, fill_value=0.0)
+    planes['Sn'] = np.ma.array(sn, mask=~decomp.qMask, fill_value=0.0)
+    return  planes
+################################################################################
+
+
+################################################################################
+def save_qbick_planes(planes, K, filename):
+    # Update planes
+    phdu = K.getPrimaryHdu()
+    for pname, data in planes.items():
+        planeId = K._planeIndex[pname]
+        print pname
+        phdu.data[planeId] = data.filled()
+        
+    # TODO: remove pycasso headers
+    for key in phdu.header.keys():
+        if key.startswith('SYN'):
+            phdu.header.remove(key)
+    hdulist = pyfits.HDUList([phdu])
+    hdulist.writeto(filename, clobber=True)
+################################################################################
+
+
+################################################################################
+def save_compound_array(db, parent, name, data, overwrite=False):
+    if overwrite and name in parent:
+        print 'Removing existing group %s' % name
+        parent._f_getChild(name)._f_remove(recursive=True)
+    grp = db.createGroup(parent, name)
+    # HACK: pytables does not support compound dtypes.
+    for field in data.dtype.names:
+        save_array(db, grp, field, data[field], overwrite)
+################################################################################
+
+    
+################################################################################
+def save_array(db, parent, name, data, overwrite=False):
+    if overwrite and name in parent:
+        print 'Removing existing array %s' % name
+        parent._f_getChild(name)._f_remove()
+    ca = db.createCArray(parent, name, Atom.from_dtype(data.dtype), data.shape, filters=Filters(1, 'blosc'))
+    if isinstance(data, np.ma.MaskedArray):
+        data = data.filled()
+    ca[...] = data
+################################################################################
+
+
+################################################################################
 parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
 
 parser.add_argument('galaxyId', type=str, nargs=1,
@@ -28,6 +92,8 @@ parser.add_argument('--decomp-id', dest='decompId', default='decomposition',
 parser.add_argument('--db', dest='db', default='../cubes.200/',
                     help='QALIFA database path.')
 parser.add_argument('--db-out', dest='dbOutput', default='decomposition.005.h5',
+                    help='Output HDF5 database path.')
+parser.add_argument('--zone-file-dir', dest='zoneFileDir', default='data/planes',
                     help='Output HDF5 database path.')
 parser.add_argument('--verbose', dest='verbose', action='store_true',
                     help='Enable verbose output.')
@@ -103,6 +169,17 @@ f_disk__lz['f_flag'] += flag_big_error(f_disk__lz['f_obs'], f_disk__lz['f_err'])
 f_disk__lz['f_flag'] += flag_small_error(f_disk__lz['f_obs'], f_disk__lz['f_err'], f_disk__lz['f_flag'])
 
 
+# Create qbick planes file
+l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
+
+total_planes = get_planes_image(f__lz, l_mask, decomp)
+save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s-total-planes.fits' % (galaxyId, args.decompId)))
+bulge_planes = get_planes_image(f_bulge__lz, l_mask, decomp)
+save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s-bulge-planes.fits' % (galaxyId, args.decompId)))
+disk_planes = get_planes_image(f_disk__lz, l_mask, decomp)
+save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s-disk-planes.fits' % (galaxyId, args.decompId)))
+
+
 # Integrated spectra
 i_f__l = np.empty(shape=shape__l, dtype=dtype)
 i_f__l['f_syn'] = f__lz['f_syn'].sum(axis=1)
@@ -152,25 +229,6 @@ t.attrs.y0 = decomp.y0
 t.append(fit_params)
 t.flush()
 
-def save_compound_array(db, parent, name, data, overwrite=False):
-    if overwrite and name in parent:
-        print 'Removing existing group %s' % name
-        parent._f_getChild(name)._f_remove(recursive=True)
-    grp = db.createGroup(parent, name)
-    # HACK: pytables does not support compound dtypes.
-    for field in data.dtype.names:
-        save_array(db, grp, field, data[field], overwrite)
-
-    
-def save_array(db, parent, name, data, overwrite=False):
-    if overwrite and name in parent:
-        print 'Removing existing array %s' % name
-        parent._f_getChild(name)._f_remove()
-    ca = db.createCArray(parent, name, Atom.from_dtype(data.dtype), data.shape, filters=Filters(1, 'blosc'))
-    if isinstance(data, np.ma.MaskedArray):
-        data = data.filled()
-    ca[...] = data
-    
 save_array(db, grp, 'qMask', decomp.qMask, args.overwrite)
 save_array(db, grp, 'qSignal', decomp.qSignal, args.overwrite)
 save_array(db, grp, 'qZones', decomp.qZones, args.overwrite)
@@ -185,6 +243,7 @@ save_compound_array(db, grp, 'i_f__l', i_f__l, args.overwrite)
 save_compound_array(db, grp, 'i_f_bulge__l', i_f_bulge__l, args.overwrite)
 save_compound_array(db, grp, 'i_f_disk__l', i_f_disk__l, args.overwrite)
 
+save_array(db, grp, 'f_syn__lyx', decomp.f_syn_rest__lyx, args.overwrite)
 save_array(db, grp, 'f_syn_bulge__lyx', f_syn_bulge__lyx, args.overwrite)
 save_array(db, grp, 'f_syn_disk__lyx', f_syn_disk__lyx, args.overwrite)
 
