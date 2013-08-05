@@ -20,20 +20,24 @@ import pyfits
 
 ################################################################################
 def get_planes_image(f__lz, l_mask, decomp):
-    planes = {}
     f_obs = f__lz['f_obs'][l_mask]
     f_flag = f__lz['f_flag'][l_mask]
     f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False)
     f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False)
     
+    planes = np.zeros(shape=(decomp.N_y, decomp.N_x),
+                      dtype=[('Signal', 'float64'), ('Noise', 'float64'),
+                             ('Sn', 'float64'), ('ZonesNoise', 'float64'),
+                             ('ZonesSn', 'float64')])
+
     _, qZoneNoise__z, qZoneSn__z = calc_sn(f_obs, f_flag)
     planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False)
     planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False)
     
     signal, noise, sn = calc_sn(f_obs__lyx, f_flag__lyx)
-    planes['Signal'] = np.ma.array(signal, mask=~decomp.qMask, fill_value=0.0)
-    planes['Noise'] = np.ma.array(noise, mask=~decomp.qMask, fill_value=0.0)
-    planes['Sn'] = np.ma.array(sn, mask=~decomp.qMask, fill_value=0.0)
+    planes['Signal'] = signal
+    planes['Noise'] = noise
+    planes['Sn'] = sn
     return  planes
 ################################################################################
 
@@ -42,12 +46,11 @@ def get_planes_image(f__lz, l_mask, decomp):
 def save_qbick_planes(planes, K, filename):
     # Update planes
     phdu = K.getPrimaryHdu()
-    for pname, data in planes.items():
+    for pname in planes.dtype.names:
         planeId = K._planeIndex[pname]
-        print pname
-        phdu.data[planeId] = data.filled()
+        phdu.data[planeId] = planes[pname]
         
-    # TODO: remove pycasso headers
+    # TODO: remove all pycasso headers
     for key in phdu.header.keys():
         if key.startswith('SYN'):
             phdu.header.remove(key)
@@ -169,17 +172,6 @@ f_disk__lz['f_flag'] += flag_big_error(f_disk__lz['f_obs'], f_disk__lz['f_err'])
 f_disk__lz['f_flag'] += flag_small_error(f_disk__lz['f_obs'], f_disk__lz['f_err'], f_disk__lz['f_flag'])
 
 
-# Create qbick planes file
-l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
-
-total_planes = get_planes_image(f__lz, l_mask, decomp)
-save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s-total-planes.fits' % (galaxyId, args.decompId)))
-bulge_planes = get_planes_image(f_bulge__lz, l_mask, decomp)
-save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s-bulge-planes.fits' % (galaxyId, args.decompId)))
-disk_planes = get_planes_image(f_disk__lz, l_mask, decomp)
-save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s-disk-planes.fits' % (galaxyId, args.decompId)))
-
-
 # Integrated spectra
 i_f__l = np.empty(shape=shape__l, dtype=dtype)
 i_f__l['f_syn'] = f__lz['f_syn'].sum(axis=1)
@@ -187,21 +179,27 @@ i_f__l['f_obs'], i_f__l['f_err'], i_f__l['f_flag'] = integrated_spec(f__lz['f_ob
                                                                      f__lz['f_err'],
                                                                      f__lz['f_flag'])
 
-# FIXME: bulge central pixels are not OK if we don't use
-# the correct PSF when fitting. Discard the central zones.
-zonedist = np.sqrt((decomp.zonePos['x'] - decomp.x0)**2 + (decomp.zonePos['y'] - decomp.y0)**2)
-bulge_ok = zonedist >= args.radClip
 i_f_bulge__l = np.empty(shape=shape__l, dtype=dtype)
-i_f_bulge__l['f_syn'] = f_bulge__lz['f_syn'][:,bulge_ok].sum(axis=1)
-i_f_bulge__l['f_obs'], i_f_bulge__l['f_err'], i_f_bulge__l['f_flag'] = integrated_spec(f_bulge__lz['f_obs'][:,bulge_ok],
-                                                                                       f_bulge__lz['f_err'][:,bulge_ok],
-                                                                                       f_bulge__lz['f_flag'][:,bulge_ok])
+i_f_bulge__l['f_syn'] = f_bulge__lz['f_syn'].sum(axis=1)
+i_f_bulge__l['f_obs'], i_f_bulge__l['f_err'], i_f_bulge__l['f_flag'] = integrated_spec(f_bulge__lz['f_obs'],
+                                                                                       f_bulge__lz['f_err'],
+                                                                                       f_bulge__lz['f_flag'])
 
 i_f_disk__l = np.empty(shape=shape__l, dtype=dtype)
 i_f_disk__l['f_syn'] = f_disk__lz['f_syn'].sum(axis=1)
 i_f_disk__l['f_obs'], i_f_disk__l['f_err'], i_f_disk__l['f_flag'] = integrated_spec(f_disk__lz['f_obs'],
                                                                                     f_disk__lz['f_err'],
                                                                                     f_disk__lz['f_flag'])
+
+
+logger.info('Creating qbick planes...')
+l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
+total_planes = get_planes_image(f__lz, l_mask, decomp)
+save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s-total-planes.fits' % (galaxyId, args.decompId)))
+bulge_planes = get_planes_image(f_bulge__lz, l_mask, decomp)
+save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s-bulge-planes.fits' % (galaxyId, args.decompId)))
+disk_planes = get_planes_image(f_disk__lz, l_mask, decomp)
+save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s-disk-planes.fits' % (galaxyId, args.decompId)))
 
 
 logger.info('Saving to storage...')
@@ -232,6 +230,10 @@ t.flush()
 save_array(db, grp, 'qMask', decomp.qMask, args.overwrite)
 save_array(db, grp, 'qSignal', decomp.qSignal, args.overwrite)
 save_array(db, grp, 'qZones', decomp.qZones, args.overwrite)
+
+save_compound_array(db, grp, 'qbick_planes', total_planes, args.overwrite)
+save_compound_array(db, grp, 'qbick_planes_bulge', bulge_planes, args.overwrite)
+save_compound_array(db, grp, 'qbick_planes_disk', disk_planes, args.overwrite)
 
 save_array(db, grp, 'l_obs', fit_l_obs, args.overwrite)
 

@@ -35,7 +35,8 @@ t = grp.fit_parameters
 box_radius = t.attrs.box_radius
 FWHM = t.attrs.FWHM
 rad_clip = t.attrs.rad_clip
-fit_l_obs = grp.wavelength[:]
+flux_unit = t.attrs.flux_unit
+fit_l_obs = grp.l_obs[:]
 
 colnames = ['I_Be',
             'R_e',
@@ -122,18 +123,18 @@ gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
 l1 = l_range[0]
 l2 = l_range[-1]
-imshape = grp.bulge_spectra.shape[1:]
+imshape = grp.f_syn_bulge__lyx.shape[1:]
 x0 = t.cols.x0[0]
 y0 = t.cols.y0[0]
 invalid = np.where(getImageDistance(imshape, x0, y0) < rad_clip)
 
-bulge_im = grp.bulge_spectra[l1:l2].sum(axis=0)
+bulge_im = grp.f_syn_bulge__lyx[l1:l2].sum(axis=0)
 bulge_im[invalid] = np.nan
 
-disk_im = grp.disk_spectra[l1:l2].sum(axis=0)
+disk_im = grp.f_syn_disk__lyx[l1:l2].sum(axis=0)
 disk_im[invalid] = np.nan
 
-syn_im = grp.synth_spectra[l1:l2].sum(axis=0)
+syn_im = grp.f_syn__lyx[l1:l2].sum(axis=0)
 syn_im[invalid] = np.nan
 
 residual_im = syn_im - disk_im - bulge_im
@@ -195,9 +196,9 @@ fig.set_tight_layout(True)
 gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
-f_syn = grp.synth_spectra[:,37,37]
-f_disk = grp.disk_spectra[:,37,37]
-f_bulge = grp.bulge_spectra[:,37,37]
+f_syn = grp.f_syn__lyx[:,37,37]
+f_disk = grp.f_syn_disk__lyx[:,37,37]
+f_bulge = grp.f_syn_bulge__lyx[:,37,37]
 ax.plot(fit_l_obs, f_syn, 'g', label='synthetic')
 ax.plot(fit_l_obs, f_disk, 'b', label='disk model')
 ax.plot(fit_l_obs, f_bulge, 'r', label='bulge model')
