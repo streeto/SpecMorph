@@ -73,6 +73,11 @@ class BulgeDiskFitter(object):
             self.f__yx[self.pixelDistance > self.max_rad] = ma.masked
         else:
             self.max_rad = self.pixelDistance.max()
+        # FIXME: what to do when variance of a point is zero?
+#         if self.var_f__yx is not None:
+#             m = self.var_f__yx <= 0.0
+#             self.f__yx[m] = ma.masked
+#             self.var_f__yx[m] = ma.masked
 
 
     @property
@@ -104,14 +109,15 @@ class BulgeDiskFitter(object):
         bin_center = (bin_r[:-1] + bin_r[1:]) / 2.0
         if self.var_f__yx is None:
             f__r = radialProfile(self.f__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='mean')
-            var__r = radialProfile(self.f__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='var')
+            var__r = None
         else:
             w__yx = 1.0 / self.var_f__yx
             var__r = 1.0 / radialProfile(w__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='sum')
             f__r = radialProfile(self.f__yx * w__yx, self.pixelDistance, bin_r, rad_scale=1.0, mode='sum') * var__r
+            var__r = var__r.compressed()
             
-        r = ma.array(bin_center, mask=f__r.mask)
-        return r.compressed(), f__r.compressed(), var__r.compressed()
+        r = ma.array(bin_center, mask=f__r.mask).compressed()
+        return r, f__r.compressed(), var__r
     
 
     def _getRadialProfile(self, mode='scatter'):
@@ -144,7 +150,8 @@ class BulgeDiskFitter(object):
             model = GalaxyModel(I_Be, R_e, I_D0, R_0, self._sigma)
             
         fit = fitting.NonLinearLSQFitter(model)
-        fit(r, f, weights=1.0/var)
+        weights = 1.0/var if var is not None else None
+        fit(r, f, weights=weights)
         self._model = model
         self.R2 = self._R2(r, f)
 
@@ -206,7 +213,10 @@ class BulgeDiskFitter(object):
         plt.clf()
         ax = plt.subplot(111)
         r_model = np.arange(r.min(), r.max(), 0.1)
-        ax.errorbar(r, np.log10(f), yerr=np.sqrt(var)/f, fmt='o')
+        if mode == 'mean':
+            ax.errorbar(r, np.log10(f), yerr=np.sqrt(var)/f, fmt='o')
+        else:
+            ax.plot(r, np.log10(f), 'bo')
         ax.plot(r_model, np.log10(self._model(r_model)), 'r-')
         ax.plot(r_model, np.log10(PSF1d_gaussian_convolve(self._sigma, r_model, bulge_model)), 'r:')
         ax.plot(r_model, np.log10(PSF1d_gaussian_convolve(self._sigma, r_model, disk_model)), 'r--')

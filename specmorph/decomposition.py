@@ -42,12 +42,63 @@ class MorphologyFitWrapper(object):
 
 
 ################################################################################
+class ModelImageWrapper(object):
+    
+    def __init__(self, N_x, N_y, flux_unit, sigma, mask):
+        self.shape = (N_y, N_x)
+        self.flux_unit = flux_unit
+        self.PSF = gaussian2d_kernel(sigma)
+        self.mask = mask
+    
+    
+    def _getModelImage(self, model, x0, y0, pa, ba):
+        r__yx = getImageDistance(self.shape, x0, y0, pa, ba)
+        image = np.ma.array(model(r__yx), mask=~self.mask)
+        image.fill_value = np.nan
+        return image
+
+
+    def __call__(self, p):
+        bulge_model = BulgeModel(p['I_Be'], p['R_e'])
+        disk_model = DiskModel(p['I_D0'], p['R_0'])
+        x0 = p['x0']
+        y0 = p['y0']
+        pa = p['pa']
+        ba = p['ba']
+
+        bulge = self._getModelImage(bulge_model, x0, y0, pa, ba).filled() * self.flux_unit
+        # FIXME: bulge spectra does not behave at the center (r=0),
+        # so we cheat by using the nddata.convolve "feature" of
+        # interpolating around nan values.
+        bulge[int(y0), int(x0)] = np.nan
+        disk = self._getModelImage(disk_model, x0, y0, pa, ba).filled() * self.flux_unit
+
+        bulge = nddata.convolve(bulge, self.PSF, boundary='extend')
+        disk = nddata.convolve(disk, self.PSF, boundary='extend')
+        return bulge, disk
+################################################################################
+        
+
+################################################################################
 def gaussian2d_kernel(sigma):
     center = int(4.0 * sigma)
     fw = 2 * center + 1
     xx, yy = np.indices((fw, fw), dtype='int')
     rr2 = (xx - center)**2 + (yy - center)**2
     return np.exp(- 0.5 * rr2 / sigma**2) / (2.0 * np.pi * sigma**2)
+################################################################################
+
+
+
+################################################################################
+def picklehack(recarr):
+    '''
+    Recarray elements are not picklable, but a dict
+    quacks close enough. See issue
+    https://github.com/numpy/numpy/issues/3003
+    '''
+    for v in recarr:
+        yield dict(zip(recarr.dtype.names, v))
 ################################################################################
 
 
@@ -133,11 +184,16 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             l2 = self.Nl_obs - 1
         if (l1 == l2) or (l2 is None):
             f = self.f_syn_rest__lyx[l1] / self.flux_unit
-            var = (self.f_err_rest__lyx[l1] / self.flux_unit)**2
+            # Disabled error weighting
+            # var = (self.f_err_rest__lyx[l1] / self.flux_unit)**2
+            var = None
         else:
-            w = self.flux_unit**2 / self.f_err_rest__lyx[l1:l2]**2
-            var = 1.0 / w.sum(axis=0)
-            f = (self.f_syn_rest__lyx[l1:l2] / self.flux_unit * w).sum(axis=0) * var
+            # Disabled error weighting
+            # w = self.flux_unit**2 / self.f_err_rest__lyx[l1:l2]**2
+            # var = 1.0 / w.sum(axis=0)
+            # f = (self.f_syn_rest__lyx[l1:l2] / self.flux_unit * w).sum(axis=0) * var
+            f = np.mean(self.f_syn_rest__lyx[l1:l2], axis=0) / self.flux_unit
+            var = None
         return f, var
 
 
@@ -165,36 +221,19 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         return fit_params, selected_wl_ix
     
     
-    def _getModelImage(self, model, x0, y0, pa, ba, mask=None):
+    def getModelSpectra(self, params, mask=None):
         if mask is None:
             mask = self.qMask
-        shape = (self.N_y, self.N_x)
-        r__yx = getImageDistance(shape, x0, y0, pa, ba)
-        image = np.ma.masked_where(~mask, model(r__yx))
-        image.fill_value = self.fill_value
-        return image
-
-        
-    def getModelSpectra(self, params, mask=None):
-        bulge_spectra = np.empty((len(params), self.N_y, self.N_x))
-        disk_spectra = np.empty((len(params), self.N_y, self.N_x))
-
-        PSF = gaussian2d_kernel(self._sigma)        
-        for i, p in enumerate(params):
-            bulge_model = BulgeModel(p['I_Be'], p['R_e'])
-            disk_model = DiskModel(p['I_D0'], p['R_0'])
-            x0 = p['x0']
-            y0 = p['y0']
-            pa = p['pa']
-            ba = p['ba']
-
-            bulge_spectra[i] = self._getModelImage(bulge_model, x0, y0, pa, ba, mask).filled() * self.flux_unit
-            # FIXME: bulge spectra does not behave at the center
-            bulge_spectra[i, self.y0, self.x0] = np.nan
-            bulge_spectra[i] = nddata.convolve(bulge_spectra[i], PSF, boundary='extend')
-            disk_spectra[i] = self._getModelImage(disk_model, x0, y0, pa, ba, mask).filled() * self.flux_unit
-            disk_spectra[i] = nddata.convolve(disk_spectra[i], PSF, boundary='extend')
-        return bulge_spectra, disk_spectra
+        model_image = ModelImageWrapper(self.N_x, self.N_y, self.flux_unit, self._sigma, mask)
+        try:
+            from joblib import Parallel, delayed
+            result = Parallel(n_jobs=self._nproc)(delayed(model_image)(p) for p in picklehack(params))
+        except (ImportError, UserWarning):
+            logger.warn('Falling back to serial processing.')
+            result = [model_image(p) for p in params]
+            
+        bulge, disk = zip(*result)
+        return np.array(bulge), np.array(disk)
         
         
     def YXToZone(self, prop, extensive=True, surface_density=True):

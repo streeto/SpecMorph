@@ -13,10 +13,14 @@ __all__ = ['BulgeModel', 'DiskModel', 'GalaxyModel', 'PSF1d_gaussian_convolve']
 
 ################################################################################
 def disk_profile(r, I_D0, R_0):
+    if R_0 <= 0.0 or I_D0 <= 0.0:
+        return np.zeros_like(r)
     return I_D0 * np.exp(-r / R_0)
 
 
 def bulge_profile(r, I_Be, R_e):
+    if R_e <= 0.0 or I_Be <= 0.0:
+        return np.zeros_like(r)
     return I_Be * np.exp(-7.669 * ((r / R_e)**0.25 - 1))
 
 
