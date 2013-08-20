@@ -10,35 +10,21 @@ import numpy as np
 from os import path, unlink
 from astropy import nddata
 
-from .fitting import BulgeDiskFitter
+from .fitting import BulgeDiskFitter, FitterInput
 from .model import BulgeModel, DiskModel
 from .velocity_fix import SpectraVelocityFixer
+from .psf import gaussian2d_kernel
+
+try:
+    import joblib  # @UnusedImport
+    joblib_available = True
+except:
+    joblib_available = False
+    
+enable_parallel = joblib_available and not __debug__
 
 __all__ = ['BulgeDiskDecomposition']
 FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
-
-
-################################################################################
-class MorphologyFitWrapper(object):
-    
-    def __init__(self, x0, y0, sigma, rad_clip_in, rad_clip_out, mode, plot=False):
-        self.x0 = x0
-        self.y0 = y0
-        self.sigma = sigma
-        self.rad_clip_in = rad_clip_in
-        self.rad_clip_out = rad_clip_out
-        self.mode = mode
-        self.plot = plot
-
-    def __call__(self, fl__yx, var__yx=None):
-        fitter = BulgeDiskFitter(fl__yx, var__yx)
-        fitter.setup(x0=self.x0, y0=self.y0, sigma=self.sigma,
-                     rad_clip_in=self.rad_clip_in, rad_clip_out=self.rad_clip_out)
-        fitter.fitModel(self.mode)
-        if self.plot:
-            fitter.plot_model(self.mode, interactive=False)
-        return fitter.getFitParams()
-################################################################################
 
 
 ################################################################################
@@ -80,17 +66,6 @@ class ModelImageWrapper(object):
         
 
 ################################################################################
-def gaussian2d_kernel(sigma):
-    center = int(4.0 * sigma)
-    fw = 2 * center + 1
-    xx, yy = np.indices((fw, fw), dtype='int')
-    rr2 = (xx - center)**2 + (yy - center)**2
-    return np.exp(- 0.5 * rr2 / sigma**2) / (2.0 * np.pi * sigma**2)
-################################################################################
-
-
-
-################################################################################
 def picklehack(recarr):
     '''
     Recarray elements are not picklable, but a dict
@@ -113,6 +88,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
         self.f_err_rest__lyx = self.zoneToYX(self.f_err_rest__lz, extensive=True, surface_density=False)
         self._sigma = FWHM / FWHM_to_sigma_factor
+        if not enable_parallel:
+            logger.warn('Using serial processing.')
     
     
     def _loadRestFrameSpectra(self, filename, target_vd, purge_cache=False):
@@ -187,6 +164,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             # Disabled error weighting
             # var = (self.f_err_rest__lyx[l1] / self.flux_unit)**2
             var = None
+            wl = self.l_obs[l1]
         else:
             # Disabled error weighting
             # w = self.flux_unit**2 / self.f_err_rest__lyx[l1:l2]**2
@@ -194,28 +172,26 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             # f = (self.f_syn_rest__lyx[l1:l2] / self.flux_unit * w).sum(axis=0) * var
             f = np.mean(self.f_syn_rest__lyx[l1:l2], axis=0) / self.flux_unit
             var = None
-        return f, var
+            wl = (self.l_obs[l1] + self.l_obs[l2]) / 2.0
+        
+        return FitterInput(wl, f, var, self.x0, self.y0)
 
 
     def specSlicer(self, step, box_radius):
         for wl_ix in np.arange(0, self.Nl_obs, step):
-            if __debug__:
-                wl = self.l_obs[wl_ix]
-                logger.debug('Modeling for lambda = %d \AA' % wl)
             yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
     
     
-    def fitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None, mode='scatter'):
-        plot = __debug__ and step > 400
-        morphology_fit = MorphologyFitWrapper(self.x0, self.y0, self._sigma, rad_clip_in, rad_clip_out, mode, plot=plot)
-        spec_slices = self.specSlicer(step, box_radius)
-        try:
-            if plot: raise UserWarning('Plotting in parallel mode is no allowed, faking error.')
+    def fitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None,
+                   radprof_mode='scatter', enable_bounds=True, use_deriv=True, fitter='leastsq'):
+
+        fit = BulgeDiskFitter(self._sigma, rad_clip_in, radprof_mode, enable_bounds, use_deriv, fitter)
+        fitter_input = self.specSlicer(step, box_radius)
+        if enable_parallel:
             from joblib import Parallel, delayed
-            fit_params = Parallel(n_jobs=self._nproc)(delayed(morphology_fit)(fl, var) for fl, var in spec_slices)
-        except (ImportError, UserWarning):
-            logger.warn('Falling back to serial processing.')
-            fit_params = [morphology_fit(fl, var) for fl, var in spec_slices]
+            fit_params = Parallel(n_jobs=self._nproc)(delayed(fit)(fi) for fi in fitter_input)
+        else:
+            fit_params = [fit(fi) for fi in fitter_input]
         fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
         return fit_params, selected_wl_ix
@@ -225,11 +201,10 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         if mask is None:
             mask = self.qMask
         model_image = ModelImageWrapper(self.N_x, self.N_y, self.flux_unit, self._sigma, mask)
-        try:
+        if enable_parallel:
             from joblib import Parallel, delayed
             result = Parallel(n_jobs=self._nproc)(delayed(model_image)(p) for p in picklehack(params))
-        except (ImportError, UserWarning):
-            logger.warn('Falling back to serial processing.')
+        else:
             result = [model_image(p) for p in params]
             
         bulge, disk = zip(*result)

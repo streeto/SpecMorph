@@ -22,6 +22,7 @@ import pyfits
 def get_planes_image(f__lz, l_mask, decomp):
     f_obs = f__lz['f_obs'][l_mask]
     f_flag = f__lz['f_flag'][l_mask]
+    # FIXME: Dezonification?
     f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False)
     f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False)
     
@@ -110,6 +111,12 @@ parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=3.6,
                     help='PSF FWHM in arcseconds.')
 parser.add_argument('--radprof-mode', dest='radprofMode', type=str, default='scatter',
                     help='Radia profile mode: "scatter" or "mean".')
+parser.add_argument('--enable-bounds', dest='enableBounds', action='store_true',
+                    help='Enable bounds in fit parameters.')
+parser.add_argument('--use-deriv', dest='useDeriv', action='store_true',
+                    help='Use derivative of fit function.')
+parser.add_argument('--fitter', dest='fitter', type=str, default='leastsq',
+                    help='Fitter algorithm: "leastsq" or "slsqp".')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 parser.add_argument('--nproc', dest='nproc', type=int, default=-1,
@@ -131,7 +138,9 @@ t1 = time.time()
 logger.info('Starting fit for %s...' % galaxyId)
 decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0, FWHM=args.fwhm, nproc=args.nproc)
 fit_params, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                                         rad_clip_in=args.radClip, rad_clip_out=None, mode=args.radprofMode)
+                                         rad_clip_in=args.radClip, rad_clip_out=None,
+                                         radprof_mode=args.radprofMode, enable_bounds=args.enableBounds,
+                                         use_deriv=args.useDeriv, fitter=args.fitter)
 logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 
 t1 = time.time()
