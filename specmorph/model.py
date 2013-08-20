@@ -13,14 +13,10 @@ __all__ = ['BulgeModel', 'DiskModel', 'GalaxyModel', 'PSF1d_gaussian_convolve']
 
 ################################################################################
 def disk_profile(r, I_D0, R_0):
-    if R_0 <= 0.0 or I_D0 <= 0.0:
-        return np.zeros_like(r)
     return I_D0 * np.exp(-r / R_0)
 
 
 def bulge_profile(r, I_Be, R_e):
-    if R_e <= 0.0 or I_Be <= 0.0:
-        return np.zeros_like(r)
     return I_Be * np.exp(-7.669 * ((r / R_e)**0.25 - 1))
 
 
@@ -29,43 +25,12 @@ def PSF1d_gaussian_convolve(sigma, r, func):
     if sigma == 0.0:
         return func(r)
     
-    subpix_resolution = 10.0
-    r_min = r.min()
-    _r = np.arange(r_min, r.max(), 1/subpix_resolution)
-
-    _I = func(_r)
-    _I = ndimage.gaussian_filter1d(_I, subpix_resolution*sigma, mode='reflect')
+    conv_samples = 1000.0
+    dr = (r.max() - r.min()) / conv_samples
+    _r = np.arange(r.min(), r.max() + dr, dr)
+    _I = ndimage.gaussian_filter1d(func(_r), sigma * conv_samples, mode='reflect')
     return np.interp(r, _r, _I)
 ################################################################################
-
-
-################################################################################
-class BulgeModel(Parametric1DModel):
-    param_names = ['I_Be', 'R_e']
-
-    def __init__(self, I_Be, R_e, **cons):
-        super(BulgeModel, self).__init__(locals(), **cons)
-        self.deriv = None
-
-
-    def eval(self, r, I_Be, R_e):
-        return bulge_profile(r, I_Be, R_e)
-################################################################################
-
-    
-################################################################################
-class DiskModel(Parametric1DModel):
-    param_names = ['I_D0', 'R_0']
-
-    def __init__(self, I_D0, R_0, **cons):
-        super(DiskModel, self).__init__(locals(), **cons)
-        self.deriv = None
-
-
-    def eval(self, r, I_D0, R_0):
-        return disk_profile(r, I_D0, R_0)
-################################################################################
-
 
 
 ################################################################################
@@ -74,11 +39,10 @@ class GalaxyModel(Parametric1DModel):
     R2 = None
 
 
-    def __init__(self, I_Be, R_e, I_D0, R_0, sigma, **cons):
-        super(GalaxyModel, self).__init__(locals(), **cons)
+    def __init__(self, I_Be, R_e, I_D0, R_0, sigma, **constraints):
+        super(GalaxyModel, self).__init__(locals())
         self._sigma = sigma
         self.linear = False
-        self.deriv = None
 
 
     def eval(self, r, I_Be, R_e, I_D0, R_0):
@@ -89,37 +53,44 @@ class GalaxyModel(Parametric1DModel):
         return PSF1d_gaussian_convolve(self._sigma, r, bulge_disk_profile)
 
 
-    def unbound_deriv(self, r, I_Be, R_e, I_D0, R_0):
-        I_B = bulge_profile(r, I_Be, R_e)
-        I_D = disk_profile(r, I_D0, R_0)
-        d_I_Be = I_B / I_Be
-        d_Re = I_B * (7.669 / 4.0 / R_e**1.25) * r**0.25
-        d_I_D0 = I_D / I_D0
-        d_R0 = I_D / R_0**2 * r
-        return [d_I_Be, d_Re, d_I_D0, d_R0]
-
+    def deriv(self, r, I_Be, R_e, I_D0, R_0):
+        def dI_Be(r):
+            return bulge_profile(r, I_Be, R_e) / I_Be
         
-    def bound_deriv(self, r, I_Be, R_e, I_D0, R_0):
-        d_I_Be, d_Re, d_I_D0, d_R0 = self.unbound_deriv(r, I_Be, R_e, I_D0, R_0).T
-        d_I_Be = self._bound_deriv_param(self._I_Be, I_Be, d_I_Be)
-        d_Re = self._bound_deriv_param(self._R_e, R_e, d_Re)
-        d_I_D0 = self._bound_deriv_param(self._I_D0, I_D0, d_I_D0)
-        d_R0 = self._bound_deriv_param(self._R_0, R_0, d_R0)
-        return [d_I_Be, d_Re, d_I_D0, d_R0]
+        def dRe(r):
+            return bulge_profile(r, I_Be, R_e) * (7.669 / 4.0 / R_e**1.25) * r**0.25
+        
+        def dI_D0(r):
+            return disk_profile(r, I_D0, R_0) / I_D0
+
+        def dR0(r):
+            return  disk_profile(r, I_D0, R_0) / R_0**2 * r
+        
+        return [PSF1d_gaussian_convolve(self._sigma, r, dI_Be),
+                PSF1d_gaussian_convolve(self._sigma, r, dRe),
+                PSF1d_gaussian_convolve(self._sigma, r, dI_D0),
+                PSF1d_gaussian_convolve(self._sigma, r, dR0)]
+
+################################################################################
 
 
-    def _bound_deriv_param(self, param, value, deriv):
-        # FIXME: why these, you ask? No idea, it just fitted better this way.
-        lo_threshold = 0.2
-        hi_threshold = 0.8
-        k = 1000.0
-        vmin, vmax = self.constraints.bounds[param._name]
-        v = (value - vmin) / (vmax - vmin)
-        if v < lo_threshold:
-            return deriv - k * (v - lo_threshold)**4
-        elif v > hi_threshold:
-            return deriv + k * (v - hi_threshold)**4
-        return deriv
+################################################################################
+class BulgeModel(GalaxyModel):
+
+    def __init__(self, I_Be, R_e, sigma=0.0, **constraints):
+        super(BulgeModel, self).__init__(I_Be=I_Be, R_e=R_e,
+                                         I_D0=0.0, R_0=1.0,
+                                         sigma=sigma, **constraints)
+################################################################################
+
+    
+################################################################################
+class DiskModel(GalaxyModel):
+
+    def __init__(self, I_D0, R_0, sigma=0.0, **constraints):
+        super(DiskModel, self).__init__(I_Be=0.0, R_e=1.0,
+                                        I_D0=I_D0, R_0=R_0,
+                                        sigma=sigma, **constraints)
 ################################################################################
 
 
