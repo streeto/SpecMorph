@@ -5,9 +5,9 @@ Created on Jun 6, 2013
 '''
 
 import numpy as np
-from scipy import ndimage
 
 from astropy.modeling import Parametric1DModel
+from .psf import PSF1d_gaussian_convolve
 
 __all__ = ['BulgeModel', 'DiskModel', 'GalaxyModel', 'PSF1d_gaussian_convolve']
 
@@ -18,18 +18,6 @@ def disk_profile(r, I_D0, R_0):
 
 def bulge_profile(r, I_Be, R_e):
     return I_Be * np.exp(-7.669 * ((r / R_e)**0.25 - 1))
-
-
-
-def PSF1d_gaussian_convolve(sigma, r, func):
-    if sigma == 0.0:
-        return func(r)
-    
-    conv_samples = 1000.0
-    dr = (r.max() - r.min()) / conv_samples
-    _r = np.arange(r.min(), r.max() + dr, dr)
-    _I = ndimage.gaussian_filter1d(func(_r), sigma * conv_samples, mode='reflect')
-    return np.interp(r, _r, _I)
 ################################################################################
 
 
