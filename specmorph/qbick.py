@@ -71,7 +71,8 @@ def flag_small_error(f_obs, f_err, f_flag):
     return np.where(f_err < tsfe * m_err, ise, 0.0)
 
 
-def calc_sn(f, flag):
+def calc_sn(l, f, flag):
+    print f.shape
     if isinstance(f, np.ma.MaskedArray):
         f = f.copy()
     else:
@@ -79,5 +80,42 @@ def calc_sn(f, flag):
     f[(flag > 0)] = np.ma.masked
 
     signal = np.ma.median(f, axis=0)
-    noise = np.ma.std(detrend(f, axis=0), axis=0)
+    noise = np.ma.std(mdetrend(l, f, axis=0), axis=0)
     return signal, noise, signal / noise
+
+
+def mdetrend(x,y,axis=0):
+    if len(np.shape(x)) == 1 and len(np.shape(y)) == 1:
+        #linreg = stats.mstats.linregress(x,y)
+        linreg = np.ma.polyfit(x,y,1)
+        # [pendiente, ordenada_origen] --> linreg[0]: slope; linreg[1]: intercept
+        z = linreg[1] + linreg[0]*x
+        return y-z
+    elif len(np.shape(x)) == 1 and len(np.shape(y)) >= 2: 
+        data = y.copy()
+        dshape = data.shape
+        dtype = data.dtype.char
+        N = dshape[axis]
+        Npts = np.shape(data)[axis]
+        # Restructure data so that axis is along first dimension and
+        #  all other dimensions are collapsed into second dimension
+        rnk = len(dshape)
+        if axis < 0: axis = axis + rnk
+        newdims = np.r_[axis,0:axis,axis+1:rnk]
+        newdata = np.reshape(np.transpose(data, tuple(newdims)),(N, np.prod(dshape, axis=0)/N))
+        newdata = newdata.copy()  # make sure we have a copy
+        if newdata.dtype.char not in 'dfDF':
+            newdata = newdata.astype(dtype)
+        ns = np.shape(newdata)[1]
+        # Polyfit RankWarning: The rank of the coefficient matrix in the least-squares could be deficient. 
+        # We turn off the warnings at the beginning of the module
+        coef = np.array([np.ma.polyfit(x,newdata[:,k],1) for k in range(ns)])
+        dtrendat = newdata - (x[:,np.newaxis]*coef[:,0] + coef[:,1])
+        tdshape = np.take(dshape,newdims,0)
+        ret = np.reshape(dtrendat,tuple(tdshape))
+        vals = range(1,rnk)
+        olddims = vals[:axis] + [0] + vals[axis:]
+        ret = np.transpose(ret,tuple(olddims))
+        return ret
+    else:
+        raise ValueError('Bad shapes: x: %s, y: %s' % (x.shape, y.shape))

@@ -7,6 +7,7 @@ Created on Jun 6, 2013
 from pycasso.util import logger
 from specmorph import BulgeDiskDecomposition
 from specmorph.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
+from specmorph.fitting import flag_out_of_bounds
 
 from tables import openFile, Filters
 import numpy as np
@@ -19,9 +20,10 @@ import pyfits
 
 
 ################################################################################
-def get_planes_image(f__lz, l_mask, decomp):
+def get_planes_image(l_obs, f__lz, l_mask, decomp):
     f_obs = f__lz['f_obs'][l_mask]
     f_flag = f__lz['f_flag'][l_mask]
+    l = l_obs[l_mask]
     # FIXME: Dezonification?
     f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False)
     f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False)
@@ -31,11 +33,11 @@ def get_planes_image(f__lz, l_mask, decomp):
                              ('Sn', 'float64'), ('ZonesNoise', 'float64'),
                              ('ZonesSn', 'float64')])
 
-    _, qZoneNoise__z, qZoneSn__z = calc_sn(f_obs, f_flag)
+    _, qZoneNoise__z, qZoneSn__z = calc_sn(l, f_obs, f_flag)
     planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False)
     planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False)
     
-    signal, noise, sn = calc_sn(f_obs__lyx, f_flag__lyx)
+    signal, noise, sn = calc_sn(l, f_obs__lyx, f_flag__lyx)
     planes['Signal'] = signal
     planes['Noise'] = noise
     planes['Sn'] = sn
@@ -205,11 +207,11 @@ i_f_disk__l['f_obs'], i_f_disk__l['f_err'], i_f_disk__l['f_flag'] = integrated_s
 
 logger.info('Creating qbick planes...')
 l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
-total_planes = get_planes_image(f__lz, l_mask, decomp)
+total_planes = get_planes_image(fit_l_obs, f__lz, l_mask, decomp)
 save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s-total-planes.fits' % (galaxyId, args.decompId)))
-bulge_planes = get_planes_image(f_bulge__lz, l_mask, decomp)
+bulge_planes = get_planes_image(fit_l_obs, f_bulge__lz, l_mask, decomp)
 save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s-bulge-planes.fits' % (galaxyId, args.decompId)))
-disk_planes = get_planes_image(f_disk__lz, l_mask, decomp)
+disk_planes = get_planes_image(fit_l_obs, f_disk__lz, l_mask, decomp)
 save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s-disk-planes.fits' % (galaxyId, args.decompId)))
 
 
