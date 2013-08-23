@@ -72,7 +72,6 @@ def flag_small_error(f_obs, f_err, f_flag):
 
 
 def calc_sn(l, f, flag):
-    print f.shape
     if isinstance(f, np.ma.MaskedArray):
         f = f.copy()
     else:
@@ -80,7 +79,7 @@ def calc_sn(l, f, flag):
     f[(flag > 0)] = np.ma.masked
 
     signal = np.ma.median(f, axis=0)
-    noise = np.ma.std(mdetrend(l, f, axis=0), axis=0)
+    noise = np.ma.std(detrend(f, axis=0), axis=0)
     return signal, noise, signal / noise
 
 
@@ -96,7 +95,7 @@ def mdetrend(x,y,axis=0):
         dshape = data.shape
         dtype = data.dtype.char
         N = dshape[axis]
-        Npts = np.shape(data)[axis]
+#         Npts = np.shape(data)[axis]
         # Restructure data so that axis is along first dimension and
         #  all other dimensions are collapsed into second dimension
         rnk = len(dshape)
