@@ -10,17 +10,20 @@ import numpy as np
 from numpy import ma
 from .model import BulgeModel, DiskModel, GalaxyModel
 
-__all__ = ['BulgeDiskFitter', 'FitterInput']
+__all__ = ['BulgeDiskFitter', 'FitterInput', 'flag_ok', 'flag_bad', 'flag_out_of_bounds', 'flag_max_iter_reached']
+
+enable_plot=False
+
+################################################################################
+flag_ok = 0
+flag_bad = 1
+flag_out_of_bounds = 2
+flag_max_iter_reached = 4
+################################################################################
+
 
 ################################################################################
 class FitterInput(object):
-    wl = None
-    f__yx = None
-    var_f__yx=None
-    x0 = None
-    y0 = None
-    ba = None
-    pa = None
     
     def __init__(self, wl, f__yx, var_f__yx=None, x0=None, y0=None, ba=None, pa=None):
         self.wl = wl
@@ -36,34 +39,15 @@ class FitterInput(object):
 ################################################################################
 class BulgeDiskFitter(object):
     
-    wl = None
-    f__yx = None
-    var_f__yx = None
-    pixelDistance = None
-    almost_zero = 0.0
-    x0 = 0.0
-    y0 = 0.0
-    pa = 0.0
-    ba = 1.0
-    R2 = np.nan
-
-    _flux_scale = None
-    _radial_scale = None
-    _model = None
-    _sigma = 1.5
     _pixel_fraction = 0.02
-    _min_rad = 2.5
-    _max_rad = None
-    _radprof_mode = 'scatter'
-    _enable_bounds = True
-    _use_deriv = True
-    _fitter = fitting.NonLinearLSQFitter
     _maxiter = 400
+    almost_zero = 0.0
     _param_dtype = np.dtype([('I_Be', 'float64'), ('R_e', 'float64'),
                             ('I_D0', 'float64'), ('R_0', 'float64'),
                             ('R2', 'float64'),
                             ('x0', 'float64'), ('y0', 'float64'),
-                            ('pa', 'float64'), ('ba', 'float64')])
+                            ('pa', 'float64'), ('ba', 'float64'),
+                            ('flag', 'int32')])
         
 
     @classmethod
@@ -81,8 +65,6 @@ class BulgeDiskFitter(object):
         self._radprof_mode = radprof_mode
         self._enable_bounds = enable_bounds
         self._use_deriv = use_deriv
-        self._sigma = sigma
-        self._min_rad = min_rad
         if fitter == 'leastsq':
             logger.debug('Fitting using Levenberg-Marquardt algorithm (scipy.optimize.leastsq).')
             self._fitter = fitting.NonLinearLSQFitter
@@ -91,6 +73,26 @@ class BulgeDiskFitter(object):
             self._fitter = fitting.SLSQPFitter
         else:
             raise ValueError('Bad fitter: %s' % fitter)
+
+        self._sigma = sigma
+        self._min_rad = min_rad
+        self._max_rad = None
+        self.pixelDistance = None
+        self._radial_scale = None
+
+        self.wl = None
+        self.f__yx = None
+        self.var_f__yx = None
+        self._flux_scale = None
+
+        self.x0 = 0.0
+        self.y0 = 0.0
+        self.pa = 0.0
+        self.ba = 1.0
+
+        self.R2 = np.nan
+        self.flag = flag_ok
+        self._model = None
 
 
     @property
@@ -146,7 +148,6 @@ class BulgeDiskFitter(object):
     def _setup(self, fi):
         self.wl = fi.wl
         self._flux_scale = fi.f__yx.max()
-        print self._flux_scale
         self.f__yx = fi.f__yx / self._flux_scale
         self.var_f__yx = fi.var_f__yx / self._flux_scale**2 if fi.var_f__yx is not None else None
 
@@ -175,7 +176,6 @@ class BulgeDiskFitter(object):
         assert(r.shape == f.shape)
         assert(var is None or var.shape == f.shape)
         
-        print r, f
         # Initial guess
         I_Be = 1.0 / (2.0 * np.exp(-7.669))
         R_e = 1.0 / 4.0
@@ -198,16 +198,21 @@ class BulgeDiskFitter(object):
             logger.debug('Disabled derivative function.')
             self._model.deriv = None
             
-        
         fit = self._fitter(self._model)
         weights = 1.0/var if var is not None else None
         fit(r, f, weights=weights, maxiter=self._maxiter)
         self.R2 = self._R2(r, f)
-        self._checkFit(fit, self._model)
+        self._checkFit(fit)
         return self.getFitParams()
 
 
-    def _checkFit(self, fit, model):
+    def _insideBounds(self):
+        param_array = np.array([self.I_Be, self.R_e, self.I_D0, self.R_0])
+        return (param_array > self.almost_zero).all()
+
+        
+    def _checkFit(self, fit):
+        self.flag = flag_ok
         fit_info = fit.fit_info
         if isinstance(fit, fitting.NonLinearLSQFitter):
             fit_error = fit_info['ierr'] not in [1, 2, 3, 4]
@@ -220,14 +225,20 @@ class BulgeDiskFitter(object):
         else:
             raise NotImplementedError('Unknown fitter type: %s' % type(fit))
         if fit_error:
-            logger.warn('Error fitting after %d evaluations, message: %s' % (n_iter, message))
+            logger.warn('Error fitting model, message: %s' % message)
+            self.flag |= flag_bad
 
-        if self._enable_bounds and (model.I_Be.value <= 0 or model.R_e.value <= 0 or model.I_D0.value <= 0 or model.R_0.value <= 0):
+        if self._enable_bounds and self._insideBounds():
             logger.warn('The fit stepped out of bounds:')
-            logger.warn(model.parameters)
+            logger.warn(self._model.parameters)
             logger.warn(fit.bounds)
+            self.flag |= flag_out_of_bounds
+            
+        if n_iter >= self._maxiter:
+            logger.warn('Maximum iterations reached: %d' % n_iter)
+            self.flag |= flag_max_iter_reached
 
-        if __debug__:
+        if __debug__ and enable_plot:
             logger.warn('Plotting model')
             plot_title = 'Radprof. mode: %s | $\lambda = %.0f$' % (self._radprof_mode, self.wl)
             self.plot_model(self._radprof_mode, title=plot_title, interactive=False)
@@ -242,7 +253,7 @@ class BulgeDiskFitter(object):
     def getFitParams(self):
         self._assureFitted()
         return (self.I_Be, self.R_e, self.I_D0, self.R_0,
-                self.R2, self.x0, self.y0, self.pa, self.ba)
+                self.R2, self.x0, self.y0, self.pa, self.ba, self.flag)
     
     
     @property
@@ -282,7 +293,7 @@ class BulgeDiskFitter(object):
         r, f, var = self._getRadialProfile(radprof_mode)
         r *= self._radial_scale
         f *= self._flux_scale
-        print self._radial_scale
+        logger.debug('Radial scale = %.2f' % self._radial_scale)
         var = var * self._flux_scale**2 if var is not None else None
         
         import matplotlib.pyplot as plt
@@ -304,7 +315,7 @@ class BulgeDiskFitter(object):
 #         r_test = r_test[sort_ix]
 #         f_test = model_image.compressed()[sort_ix]
         
-        r_model = np.linspace(r.min(), r.max(), 200)
+        r_model = np.linspace(r.min(), r.max(), 100)
         if var is not None:
             ax.errorbar(r, np.log10(f), yerr=np.sqrt(var)/f, fmt='bo')
         else:
