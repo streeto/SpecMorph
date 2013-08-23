@@ -25,8 +25,8 @@ def get_planes_image(l_obs, f__lz, l_mask, decomp):
     f_flag = f__lz['f_flag'][l_mask]
     l = l_obs[l_mask]
     # FIXME: Dezonification?
-    f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False)
-    f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False)
+    f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False).filled()
+    f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False).filled()
     
     planes = np.zeros(shape=(decomp.N_y, decomp.N_x),
                       dtype=[('Signal', 'float64'), ('Noise', 'float64'),
@@ -34,13 +34,13 @@ def get_planes_image(l_obs, f__lz, l_mask, decomp):
                              ('ZonesSn', 'float64')])
 
     _, qZoneNoise__z, qZoneSn__z = calc_sn(l, f_obs, f_flag)
-    planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False)
-    planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False)
+    planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False, fill_value=0.0).filled()
+    planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False, fill_value=0.0).filled()
     
-    signal, noise, sn = calc_sn(l, f_obs__lyx, f_flag__lyx)
-    planes['Signal'] = signal
-    planes['Noise'] = noise
-    planes['Sn'] = sn
+    snout = calc_sn(l, f_obs__lyx[:,decomp.qMask], f_flag__lyx[:,decomp.qMask])
+    planes['Signal'][:,decomp.qMask] = snout[0]
+    planes['Noise'][:,decomp.qMask] = snout[1]
+    planes['Sn'][:,decomp.qMask] = snout[2]
     return  planes
 ################################################################################
 
