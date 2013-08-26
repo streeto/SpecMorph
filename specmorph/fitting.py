@@ -41,7 +41,7 @@ class BulgeDiskFitter(object):
     
     _pixel_fraction = 0.02
     _maxiter = 400
-    almost_zero = 0.0
+    almost_zero = 1e-20
     _param_dtype = np.dtype([('I_Be', 'float64'), ('R_e', 'float64'),
                             ('I_D0', 'float64'), ('R_0', 'float64'),
                             ('R2', 'float64'),
