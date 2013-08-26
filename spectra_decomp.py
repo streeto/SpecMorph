@@ -155,6 +155,8 @@ shape__lz = (len(fit_l_ix), decomp.N_zone)
 shape__lyx = (len(fit_l_ix), decomp.N_y, decomp.N_x)
 dtype = np.dtype([('f_obs', 'float64'), ('f_syn', 'float64'), ('f_err', 'float64'), ('f_flag', 'float64')])
 fit_l_obs = decomp.l_obs[fit_l_ix]
+# FIXME: only flagging fits that stepped out of bounds.
+flag_bad_fit = fit_params['flag'][:, np.newaxis] & flag_out_of_bounds
 
 f__lz = np.empty(shape=shape__lz, dtype=dtype)
 f__lz['f_obs'] = decomp.f_obs_rest__lz[fit_l_ix]
@@ -175,6 +177,7 @@ f_bulge__lz['f_err'] = np.sqrt(r_bulge__lz) * f__lz['f_err']
 f_bulge__lz['f_flag'] = f__lz['f_flag']
 f_bulge__lz['f_flag'] += flag_big_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'])
 f_bulge__lz['f_flag'] += flag_small_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'], f_bulge__lz['f_flag'])
+f_bulge__lz['f_flag'] += flag_bad_fit
 
 f_disk__lz = np.empty(shape=shape__lz, dtype=dtype)
 f_disk__lz['f_obs'] = r_disk__lz * f__lz['f_obs']
@@ -183,7 +186,7 @@ f_disk__lz['f_err'] = np.sqrt(r_disk__lz) * f__lz['f_err']
 f_disk__lz['f_flag'] = f__lz['f_flag']
 f_disk__lz['f_flag'] += flag_big_error(f_disk__lz['f_obs'], f_disk__lz['f_err'])
 f_disk__lz['f_flag'] += flag_small_error(f_disk__lz['f_obs'], f_disk__lz['f_err'], f_disk__lz['f_flag'])
-
+f_disk__lz['f_flag'] += flag_bad_fit
 
 # Integrated spectra
 i_f__l = np.empty(shape=shape__l, dtype=dtype)
