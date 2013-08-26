@@ -33,7 +33,10 @@ class ModelImageWrapper(object):
     def __init__(self, N_x, N_y, flux_unit, sigma, mask):
         self.shape = (N_y, N_x)
         self.flux_unit = flux_unit
-        self.PSF = gaussian2d_kernel(sigma)
+        if sigma > 0.0:
+            self.PSF = gaussian2d_kernel(sigma)
+        else:
+            self.PSF = None
         self.mask = mask
     
     
@@ -53,14 +56,16 @@ class ModelImageWrapper(object):
         ba = p['ba']
 
         bulge = self._getModelImage(bulge_model, x0, y0, pa, ba).filled() * self.flux_unit
-        # FIXME: bulge spectra does not behave at the center (r=0),
-        # so we cheat by using the nddata.convolve "feature" of
-        # interpolating around nan values.
-        bulge[int(y0), int(x0)] = np.nan
         disk = self._getModelImage(disk_model, x0, y0, pa, ba).filled() * self.flux_unit
 
-        bulge = nddata.convolve(bulge, self.PSF, boundary='extend')
-        disk = nddata.convolve(disk, self.PSF, boundary='extend')
+        if self.PSF is not None:
+            # FIXME: bulge spectra does not behave at the center (r=0),
+            # so we cheat by using the nddata.convolve "feature" of
+            # interpolating around nan values.
+            bulge[int(y0), int(x0)] = np.nan
+            bulge = nddata.convolve(bulge, self.PSF, boundary='extend')
+            disk = nddata.convolve(disk, self.PSF, boundary='extend')
+            
         return bulge, disk
 ################################################################################
         
