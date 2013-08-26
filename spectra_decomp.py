@@ -21,7 +21,10 @@ import pyfits
 
 ################################################################################
 def get_planes_image(l_obs, f__lz, l_mask, decomp):
-    f_obs = f__lz['f_obs'][l_mask]
+    f_obs = np.ma.masked_invalid(f__lz['f_obs'][l_mask], copy=True)
+    f_obs.fill_value = 0.0
+    f_obs = f_obs.filled()
+
     f_flag = f__lz['f_flag'][l_mask]
     l = l_obs[l_mask]
     # FIXME: Dezonification?
@@ -37,10 +40,11 @@ def get_planes_image(l_obs, f__lz, l_mask, decomp):
     planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False, fill_value=0.0).filled()
     planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False, fill_value=0.0).filled()
     
-    snout = calc_sn(l, f_obs__lyx[:,decomp.qMask], f_flag__lyx[:,decomp.qMask])
-    planes['Signal'][:,decomp.qMask] = snout[0]
-    planes['Noise'][:,decomp.qMask] = snout[1]
-    planes['Sn'][:,decomp.qMask] = snout[2]
+    mask = decomp.qMask
+    snout = calc_sn(l, f_obs__lyx[:,mask], f_flag__lyx[:,mask])
+    planes['Signal'][:,mask] = snout[0]
+    planes['Noise'][:,mask] = snout[1]
+    planes['Sn'][:,mask] = snout[2]
     return  planes
 ################################################################################
 
