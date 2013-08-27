@@ -137,7 +137,7 @@ disk_im[invalid] = np.nan
 syn_im = grp.f_syn__lyx[l1:l2].sum(axis=0)
 syn_im[invalid] = np.nan
 
-residual_im = syn_im - disk_im - bulge_im
+residual_im = (syn_im - disk_im - bulge_im)  / syn_im
 
 
 def getMinMax(image):
