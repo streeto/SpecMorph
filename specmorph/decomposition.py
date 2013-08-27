@@ -42,9 +42,11 @@ class ModelImageWrapper(object):
     
     def _getModelImage(self, model, x0, y0, pa, ba):
         r__yx = getImageDistance(self.shape, x0, y0, pa, ba)
-        image = np.ma.array(model(r__yx), mask=~self.mask)
-        image.fill_value = np.nan
-        return image
+        return model(r__yx)
+    
+    
+    def _masked(self, image):
+        return np.ma.array(image, mask=~self.mask, fill_value=np.nan).filled()
 
 
     def __call__(self, p):
@@ -55,8 +57,8 @@ class ModelImageWrapper(object):
         pa = p['pa']
         ba = p['ba']
 
-        bulge = self._getModelImage(bulge_model, x0, y0, pa, ba).filled() * self.flux_unit
-        disk = self._getModelImage(disk_model, x0, y0, pa, ba).filled() * self.flux_unit
+        bulge = self._getModelImage(bulge_model, x0, y0, pa, ba) * self.flux_unit
+        disk = self._getModelImage(disk_model, x0, y0, pa, ba) * self.flux_unit
 
         if self.PSF is not None:
             # FIXME: bulge spectra does not behave at the center (r=0),
@@ -66,7 +68,7 @@ class ModelImageWrapper(object):
             bulge = nddata.convolve(bulge, self.PSF, boundary='extend')
             disk = nddata.convolve(disk, self.PSF, boundary='extend')
             
-        return bulge, disk
+        return self._masked(bulge), self._masked(disk)
 ################################################################################
         
 
