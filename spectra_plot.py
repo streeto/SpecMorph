@@ -35,6 +35,8 @@ t = grp.fit_parameters
 box_radius = t.attrs.box_radius
 FWHM = t.attrs.FWHM
 rad_clip = t.attrs.rad_clip
+if rad_clip < 1.0:
+    rad_clip = 0.0
 flux_unit = t.attrs.flux_unit
 fit_l_obs = grp.l_obs[:]
 
