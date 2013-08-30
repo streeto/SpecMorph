@@ -113,7 +113,6 @@ class GridManager(object):
 
 
 #sr.starlight_exec_path = '/Users/andre/astro/qalifa/pystarlight/src/pystarlight/mock/mock_starlight.py'
-#sr.checker_exec_path = '/Users/andre/astro/starlight/starlight_checker'
 
 parser = argparse.ArgumentParser(description='Run starlight for a B/D decomposition.')
 
@@ -152,9 +151,9 @@ for grid in gm.getGrids(chunk_size=args.chunkSize):
 print 'Waiting jobs completion.'
 runner.wait()
 
-failed = runner.getFailedGrids()
-if len(failed) > 0:
+failed_grids = runner.getFailedGrids()
+if len(failed_grids) > 0:
     print 'Failed to starlight:'
-    for grid in failed:
-        print '\n'.join(r.outFile for r in grid.runs)
+    for grid in failed_grids:
+        print '\n'.join(r.outFile for r in grid.failed)
 
