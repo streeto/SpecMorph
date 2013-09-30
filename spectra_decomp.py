@@ -7,7 +7,6 @@ Created on Jun 6, 2013
 from pycasso.util import logger
 from specmorph import BulgeDiskDecomposition
 from specmorph.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
-from specmorph.fitting import flag_out_of_bounds
 
 from tables import openFile, Filters
 import numpy as np
@@ -111,18 +110,8 @@ parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
                     help='Spectral running average box radius.')
 parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
                     help='Spectral running average box step.')
-parser.add_argument('--rad-clip', dest='radClip', type=float, default=0.0,
-                    help='Radial clip in arc seconds (float).')
 parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=3.6,
                     help='PSF FWHM in arcseconds.')
-parser.add_argument('--radprof-mode', dest='radprofMode', type=str, default='scatter',
-                    help='Radia profile mode: "scatter" or "mean".')
-parser.add_argument('--enable-bounds', dest='enableBounds', action='store_true',
-                    help='Enable bounds in fit parameters.')
-parser.add_argument('--use-deriv', dest='useDeriv', action='store_true',
-                    help='Use derivative of fit function.')
-parser.add_argument('--fitter', dest='fitter', type=str, default='leastsq',
-                    help='Fitter algorithm: "leastsq" or "slsqp".')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 parser.add_argument('--nproc', dest='nproc', type=int, default=-1,
@@ -143,16 +132,16 @@ dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 t1 = time.time()
 logger.info('Starting fit for %s...' % galaxyId)
 decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0, FWHM=args.fwhm, nproc=args.nproc)
-fit_params, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                                         rad_clip_in=args.radClip, rad_clip_out=None,
-                                         radprof_mode=args.radprofMode, enable_bounds=args.enableBounds,
-                                         use_deriv=args.useDeriv, fitter=args.fitter)
+models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
 logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 
 t1 = time.time()
 logger.info('Computing model spectra...')
 
-f_syn_bulge__lyx, f_syn_disk__lyx = decomp.getModelSpectra(fit_params)
+f_syn_bulge__lyx, f_syn_disk__lyx = decomp.getModelSpectra(models)
+
+# TODO: better array and dtype handling.
+fit_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
 
 shape__l = (len(fit_l_ix),)
 shape__lz = (len(fit_l_ix), decomp.N_zone)
@@ -160,7 +149,7 @@ shape__lyx = (len(fit_l_ix), decomp.N_y, decomp.N_x)
 dtype = np.dtype([('f_obs', 'float64'), ('f_syn', 'float64'), ('f_err', 'float64'), ('f_flag', 'float64')])
 fit_l_obs = decomp.l_obs[fit_l_ix]
 # FIXME: only flagging fits that stepped out of bounds.
-flag_bad_fit = fit_params['flag'][:, np.newaxis] & flag_out_of_bounds
+flag_bad_fit = fit_params['flag'][:, np.newaxis] > 0.0
 
 f__lz = np.empty(shape=shape__lz, dtype=dtype)
 f__lz['f_obs'] = decomp.f_obs_rest__lz[fit_l_ix]
@@ -237,7 +226,6 @@ t = db.createTable(grp, 'fit_parameters', fit_params.dtype, 'Morphology fit para
 t.attrs.FWHM = args.fwhm
 t.attrs.box_step = args.boxStep
 t.attrs.box_radius = args.boxRadius
-t.attrs.rad_clip = args.radClip
 t.attrs.orig_file = dbfile
 t.attrs.object_name = decomp.galaxyName
 t.attrs.flux_unit = decomp.flux_unit

@@ -5,15 +5,16 @@ Created on Jun 6, 2013
 '''
 
 from pycasso import fitsQ3DataCube
-from pycasso.util import logger, getImageDistance
+from pycasso.util import logger
+from imfit.fitting import Imfit
+from imfit.psf import moffat_psf
+
 import numpy as np
 from os import path, unlink
-from astropy import nddata
+from copy import deepcopy
 
-from .fitting import BulgeDiskFitter, FitterInput
-from .model import BulgeModel, DiskModel
 from .velocity_fix import SpectraVelocityFixer
-from .psf import gaussian2d_kernel
+from .model import GalaxyModel
 
 try:
     import joblib  # @UnusedImport
@@ -28,63 +29,6 @@ FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
 
 
 ################################################################################
-class ModelImageWrapper(object):
-    
-    def __init__(self, N_x, N_y, flux_unit, sigma, mask):
-        self.shape = (N_y, N_x)
-        self.flux_unit = flux_unit
-        if sigma > 0.0:
-            self.PSF = gaussian2d_kernel(sigma)
-        else:
-            self.PSF = None
-        self.mask = mask
-    
-    
-    def _getModelImage(self, model, x0, y0, pa, ba):
-        r__yx = getImageDistance(self.shape, x0, y0, pa, ba)
-        return model(r__yx)
-    
-    
-    def _masked(self, image):
-        return np.ma.array(image, mask=~self.mask, fill_value=np.nan).filled()
-
-
-    def __call__(self, p):
-        bulge_model = BulgeModel(p['I_Be'], p['R_e'])
-        disk_model = DiskModel(p['I_D0'], p['R_0'])
-        x0 = p['x0']
-        y0 = p['y0']
-        pa = p['pa']
-        ba = p['ba']
-
-        bulge = self._getModelImage(bulge_model, x0, y0, pa, ba) * self.flux_unit
-        disk = self._getModelImage(disk_model, x0, y0, pa, ba) * self.flux_unit
-
-        if self.PSF is not None:
-            # FIXME: bulge spectra does not behave at the center (r=0),
-            # so we cheat by using the nddata.convolve "feature" of
-            # interpolating around nan values.
-            bulge[int(y0), int(x0)] = np.nan
-            bulge = nddata.convolve(bulge, self.PSF, boundary='extend')
-            disk = nddata.convolve(disk, self.PSF, boundary='extend')
-            
-        return self._masked(bulge), self._masked(disk)
-################################################################################
-        
-
-################################################################################
-def picklehack(recarr):
-    '''
-    Recarray elements are not picklable, but a dict
-    quacks close enough. See issue
-    https://github.com/numpy/numpy/issues/3003
-    '''
-    for v in recarr:
-        yield dict(zip(recarr.dtype.names, v))
-################################################################################
-
-
-################################################################################
 class BulgeDiskDecomposition(fitsQ3DataCube):
 
     def __init__(self, synthesisFile, smooth=True, target_vd=0.0, FWHM=0.0, purge_cache=False, nproc=-1):
@@ -94,9 +38,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self.f_syn_rest__lyx = self.zoneToYX(self.f_syn_rest__lz, extensive=True, surface_density=False)
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
         self.f_err_rest__lyx = self.zoneToYX(self.f_err_rest__lz, extensive=True, surface_density=False)
-        self._sigma = FWHM / FWHM_to_sigma_factor
-        if not enable_parallel:
-            logger.warn('Using serial processing.')
+        self.f_flag_rest__lyx = self.zoneToYX(self.f_flag_rest__lz, extensive=False)
+        self._FWHM = FWHM
     
     
     def _loadRestFrameSpectra(self, filename, target_vd, purge_cache=False):
@@ -168,20 +111,20 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             l2 = self.Nl_obs - 1
         if (l1 == l2) or (l2 is None):
             f = self.f_syn_rest__lyx[l1] / self.flux_unit
-            # Disabled error weighting
-            # var = (self.f_err_rest__lyx[l1] / self.flux_unit)**2
-            var = None
+            noise = self.f_err_rest__lyx[l1] / self.flux_unit
+            flag = self.f_flag_rest__lyx[l1] > 0
+            f[flag] = np.ma.masked
+            mask = f.mask.copy()
+            f.fill_value = 0.0 
+            f = f.filled()
+            noise[flag] = np.ma.masked
+            noise.fill_value = noise.max()
+            noise = noise.filled()
             wl = self.l_obs[l1]
         else:
-            # Disabled error weighting
-            # w = self.flux_unit**2 / self.f_err_rest__lyx[l1:l2]**2
-            # var = 1.0 / w.sum(axis=0)
-            # f = (self.f_syn_rest__lyx[l1:l2] / self.flux_unit * w).sum(axis=0) * var
-            f = np.mean(self.f_syn_rest__lyx[l1:l2], axis=0) / self.flux_unit
-            var = None
-            wl = (self.l_obs[l1] + self.l_obs[l2]) / 2.0
+            raise NotImplementedError('Fat slices not supported yet.')
         
-        return FitterInput(wl, f, var, self.x0, self.y0)
+        return np.ma.array(f, mask=mask), np.ma.array(noise, mask=mask), wl
 
 
     def specSlicer(self, step, box_radius):
@@ -189,33 +132,56 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
     
     
-    def fitSpectra(self, step=1, box_radius=0, rad_clip_in=2.5, rad_clip_out=None,
-                   radprof_mode='scatter', enable_bounds=True, use_deriv=True, fitter='leastsq'):
+    def fitSpectra(self, step=1, box_radius=0):
+        PSF = moffat_psf(self._FWHM, size=51)
 
-        fit = BulgeDiskFitter(self._sigma, rad_clip_in, radprof_mode, enable_bounds, use_deriv, fitter)
-        fitter_input = self.specSlicer(step, box_radius)
-        if enable_parallel:
-            from joblib import Parallel, delayed
-            fit_params = Parallel(n_jobs=self._nproc)(delayed(fit)(fi) for fi in fitter_input)
-        else:
-            fit_params = [fit(fi) for fi in fitter_input]
-        fit_params = np.array(fit_params, dtype=BulgeDiskFitter.getParamDtype())
+        model = GalaxyModel(x0=self.x0, y0=self.y0,
+                            I_e=1, r_e=25, PA_b=90.0, ell_b=0.5,
+                            I_0=1, h=25, PA_d=90.0, ell_d=0.5)
+        imfit = Imfit(model, PSF)
+        # Fit qSignal to find the first guess.
+        mask = ~self.qMask
+        qSignal = np.ma.array(self.qSignal, mask=mask)
+        qNoise = np.ma.array(self.qNoise, mask=mask)
+        imfit.fit(qSignal, qNoise, quiet=True)
+        guess_model = imfit.getModelDescription()
+        
+        logger.debug('qSignal model: %s' % imfit.getModelDescription())
+        slices = self.specSlicer(step, box_radius)
+        models = []
+        for flux, noise, wl in slices:
+            logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
+            # FIXME: get rid of explicit deepcopying.
+            imfit = Imfit(deepcopy(guess_model), PSF, nproc=self._nproc)
+            imfit.fit(flux, noise, quiet=True)
+            fitted_model = imfit.getModelDescription()
+            if not imfit.fitConverged or imfit.nPegged > 0 or imfit.nValidPixels < 1000:
+                logger.warn('Bad fit for wavelength: %.0f \\AA.' % wl)
+                fitted_model.flag = 1.0
+            fitted_model.chi2 = imfit.chi2
+            fitted_model.nValidPixels = imfit.nValidPixels
+            models.append(fitted_model)
+                
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
-        return fit_params, selected_wl_ix
+        return models, selected_wl_ix
     
     
-    def getModelSpectra(self, params, mask=None):
+    def _getModelImage(self, model, PSF):
+        imfit = Imfit(model, PSF)
+        shape = (self.N_y, self.N_x)
+        return imfit.getModelImage(shape) * self.flux_unit
+    
+    
+    def getModelSpectra(self, models, mask=None):
         if mask is None:
             mask = self.qMask
-        model_image = ModelImageWrapper(self.N_x, self.N_y, self.flux_unit, self._sigma, mask)
-        if enable_parallel:
-            from joblib import Parallel, delayed
-            result = Parallel(n_jobs=self._nproc)(delayed(model_image)(p) for p in picklehack(params))
-        else:
-            result = [model_image(p) for p in params]
-            
-        bulge, disk = zip(*result)
-        return np.array(bulge), np.array(disk)
+        PSF = moffat_psf(self._FWHM, size=51) if self._FWHM is not None else None
+        bulge = np.empty((len(models), self.N_y, self.N_x))
+        disk = np.empty((len(models), self.N_y, self.N_x))
+        for i, model in enumerate(models):
+            bulge[i] = self._getModelImage(model.getBulge(), PSF)
+            disk[i] = self._getModelImage(model.getDisk(), PSF)
+        return bulge, disk
         
         
     def YXToZone(self, prop, extensive=True, surface_density=True):
