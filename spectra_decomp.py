@@ -110,8 +110,12 @@ parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
                     help='Spectral running average box radius.')
 parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
                     help='Spectral running average box step.')
-parser.add_argument('--psf-fwhm', dest='fwhm', type=float, default=3.6,
+parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=3.6,
                     help='PSF FWHM in arcseconds.')
+parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=-1,
+                    help='PSF beta parameter for Moffat profile. If not set, use Gaussian.')
+parser.add_argument('--psf-size', dest='psfSize', type=int, default=15,
+                    help='PSF size, in pixels. Must be an odd number.')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 parser.add_argument('--nproc', dest='nproc', type=int, default=-1,
@@ -131,7 +135,9 @@ dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 t1 = time.time()
 logger.info('Starting fit for %s...' % galaxyId)
-decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0, FWHM=args.fwhm, nproc=args.nproc)
+decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0,
+                                PSF_FWHM=args.psfFWHM, PSF_beta=args.psfBeta, PSF_size=args.psfSize,
+                                nproc=args.nproc)
 models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
 logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 
@@ -223,7 +229,10 @@ if args.overwrite and 'fit_parameters' in grp:
 
 t = db.createTable(grp, 'fit_parameters', fit_params.dtype, 'Morphology fit parameters', Filters(1, 'blosc'),
               expectedrows=len(fit_params))
-t.attrs.FWHM = args.fwhm
+t.attrs.FWHM = args.psfFWHM
+t.attrs.PSF_FWHM = args.psfFWHM
+t.attrs.PSF_beta = args.psfBeta
+t.attrs.PSF_size = args.psfSize
 t.attrs.box_step = args.boxStep
 t.attrs.box_radius = args.boxRadius
 t.attrs.orig_file = dbfile

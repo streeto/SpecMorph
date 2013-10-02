@@ -7,11 +7,10 @@ Created on Jun 6, 2013
 from pycasso import fitsQ3DataCube
 from pycasso.util import logger
 from imfit.fitting import Imfit
-from imfit.psf import moffat_psf
+from imfit.psf import moffat_psf, gaussian_psf
 
 import numpy as np
 from os import path, unlink
-from copy import deepcopy
 
 from .velocity_fix import SpectraVelocityFixer
 from .model import GalaxyModel
@@ -31,7 +30,8 @@ FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
 ################################################################################
 class BulgeDiskDecomposition(fitsQ3DataCube):
 
-    def __init__(self, synthesisFile, smooth=True, target_vd=0.0, FWHM=0.0, purge_cache=False, nproc=-1):
+    def __init__(self, synthesisFile, smooth=True, target_vd=0.0,
+                 PSF_FWHM=0.0, PSF_beta=None, PSF_size=15, purge_cache=False, nproc=-1):
         self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
@@ -39,7 +39,10 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
         self.f_err_rest__lyx = self.zoneToYX(self.f_err_rest__lz, extensive=True, surface_density=False)
         self.f_flag_rest__lyx = self.zoneToYX(self.f_flag_rest__lz, extensive=False)
-        self._FWHM = FWHM
+        if PSF_beta is None:
+            self._PSF = gaussian_psf(PSF_FWHM, size=PSF_size)
+        else:
+            self._PSF = moffat_psf(PSF_FWHM, PSF_beta, size=PSF_size)
     
     
     def _loadRestFrameSpectra(self, filename, target_vd, purge_cache=False):
@@ -133,27 +136,26 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def fitSpectra(self, step=1, box_radius=0):
-        PSF = moffat_psf(self._FWHM, size=51)
-
-        model = GalaxyModel(x0=self.x0, y0=self.y0,
-                            I_e=1, r_e=25, PA_b=90.0, ell_b=0.5,
-                            I_0=1, h=25, PA_d=90.0, ell_d=0.5)
-        imfit = Imfit(model, PSF)
+        guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
+                                  I_e=0.06, r_e=11.0, PA_b=90.0, ell_b=0.35,
+                                  I_0=0.1, h=12.0, PA_d=90.0, ell_d=0.3)
+        logger.debug('Initial model:\n%s\n' % guess_model)
         # Fit qSignal to find the first guess.
+        imfit = Imfit(guess_model, self._PSF, quiet=True, nproc=self._nproc)
         mask = ~self.qMask
         qSignal = np.ma.array(self.qSignal, mask=mask)
         qNoise = np.ma.array(self.qNoise, mask=mask)
-        imfit.fit(qSignal, qNoise, quiet=True)
+        imfit.fit(qSignal, qNoise)
         guess_model = imfit.getModelDescription()
+        logger.debug('refined initial model:\n%s\n' % imfit.getModelDescription())
         
-        logger.debug('qSignal model: %s' % imfit.getModelDescription())
         slices = self.specSlicer(step, box_radius)
         models = []
         for flux, noise, wl in slices:
             logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
-            # FIXME: get rid of explicit deepcopying.
-            imfit = Imfit(deepcopy(guess_model), PSF, nproc=self._nproc)
-            imfit.fit(flux, noise, quiet=True)
+            imfit = Imfit(guess_model, self._PSF, quiet=True, nproc=self._nproc)
+            imfit.fit(flux, noise)
+            logger.debug('Valid pix: %d | Iterations: %d | chi2: %f' % (imfit.nValidPixels, imfit.nIter, imfit.chi2))
             fitted_model = imfit.getModelDescription()
             if not imfit.fitConverged or imfit.nPegged > 0 or imfit.nValidPixels < 1000:
                 logger.warn('Bad fit for wavelength: %.0f \\AA.' % wl)
@@ -167,7 +169,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def _getModelImage(self, model, PSF):
-        imfit = Imfit(model, PSF)
+        imfit = Imfit(model, PSF, quiet=True, nproc=self._nproc)
         shape = (self.N_y, self.N_x)
         return imfit.getModelImage(shape) * self.flux_unit
     
@@ -175,12 +177,11 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     def getModelSpectra(self, models, mask=None):
         if mask is None:
             mask = self.qMask
-        PSF = moffat_psf(self._FWHM, size=51) if self._FWHM is not None else None
         bulge = np.empty((len(models), self.N_y, self.N_x))
         disk = np.empty((len(models), self.N_y, self.N_x))
         for i, model in enumerate(models):
-            bulge[i] = self._getModelImage(model.getBulge(), PSF)
-            disk[i] = self._getModelImage(model.getDisk(), PSF)
+            bulge[i] = self._getModelImage(model.getBulge(), self._PSF)
+            disk[i] = self._getModelImage(model.getDisk(), self._PSF)
         return bulge, disk
         
         
