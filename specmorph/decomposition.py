@@ -112,42 +112,34 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             l1 = 0
         if l2 >= self.Nl_obs:
             l2 = self.Nl_obs - 1
+
         if (l1 == l2) or (l2 is None):
             wl = self.l_obs[l1]
             flag = self.f_flag_rest__lyx[l1] > 0
-            
             f = self.f_syn_rest__lyx[l1] / self.flux_unit
-            f[flag] = np.ma.masked 
-            f[flag] = 0.0
-            f.fill_value = 0.0 
-            
             noise = self.f_err_rest__lyx[l1] / self.flux_unit
-            noise[flag] = np.ma.masked
-            noise_fill = noise.max()
-            noise[flag] = noise_fill
-            noise.fill_value = noise_fill
         else:
             wl = np.mean(self.l_obs[l1:l2])
-            flag = self.f_flag_rest__lyx[l1:l2] > 0
-            n_lambda = flag.shape[0]
-            flag__yx = flag.sum(axis=0) > (flag_ratio_threshold * n_lambda)
-            n_good_pix = (~flag__yx).sum()
-            
+            flag__l = self.f_flag_rest__lyx[l1:l2] > 0
+            n_lambda = flag__l.shape[0]
+            flag = flag__l.sum(axis=0) > (flag_ratio_threshold * n_lambda)
             f = self.f_syn_rest__lyx[l1:l2] / self.flux_unit
-            f[flag] = np.ma.masked
+            f[flag__l] = np.ma.masked
             f = np.median(f, axis=0)
-            f[flag__yx] = np.ma.masked
-            f.fill_value = 0.0
-
             noise = self.f_err_rest__lyx[l1:l2] / self.flux_unit
-            noise[flag] = np.ma.masked
+            noise[flag__l] = np.ma.masked
             noise = 1.0/np.sqrt(np.sum(noise**-2, axis=0))
-            noise[flag__yx] = np.ma.masked
-            if n_good_pix > 0:
-                noise_fill = noise.max()
-            else:
-                noise_fill = 1.0
-            noise.fill_value = noise_fill
+            
+        f[flag] = np.ma.masked
+        f.fill_value = 0.0
+
+        noise[flag] = np.ma.masked
+        n_good_pix = (~f.mask).sum()
+        if n_good_pix > 0:
+            noise_fill = noise.max()
+        else:
+            noise_fill = 1.0
+        noise.fill_value = noise_fill
 
         return f, noise, wl
 
