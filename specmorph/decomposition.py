@@ -14,14 +14,8 @@ from os import path, unlink
 
 from .velocity_fix import SpectraVelocityFixer
 from .model import GalaxyModel
+import collections
 
-try:
-    import joblib  # @UnusedImport
-    joblib_available = True
-except:
-    joblib_available = False
-    
-enable_parallel = joblib_available and not __debug__
 
 __all__ = ['BulgeDiskDecomposition']
 FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -144,12 +138,13 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         return f, noise, wl
 
 
-    def specSlicer(self, step, box_radius):
-        for wl_ix in np.arange(0, self.Nl_obs, step):
+    def specSlicer(self, selected_wl_ix, box_radius):
+        for wl_ix in selected_wl_ix:
             yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
     
     
-    def fitSpectra(self, step=1, box_radius=0):
+    def _guessInitialModel(self):
+        # TODO: get rid of these magic galactic parameters.
         guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
                                   I_e=0.06, r_e=11.0, PA_b=90.0, ell_b=0.35,
                                   I_0=0.1, h=12.0, PA_d=90.0, ell_d=0.3)
@@ -161,13 +156,37 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         qNoise = np.ma.array(self.qNoise, mask=mask)
         imfit.fit(qSignal, qNoise)
         guess_model = imfit.getModelDescription()
-        logger.debug('refined initial model:\n%s\n' % imfit.getModelDescription())
-        
-        slices = self.specSlicer(step, box_radius)
+        logger.debug('Refined initial model:\n%s\n' % guess_model)
+        return guess_model
+
+
+    def _getInitialModelIterator(self, selected_wl_ix, initial_model):
+        N_slices = len(selected_wl_ix)
+        if initial_model is None:
+            initial_model = self._guessInitialModel()
+            logger.debug('Guessed initial model:\n%s\n' % initial_model)
+
+        if isinstance(initial_model, collections.Iterable):
+            print len(initial_model)
+            if len(initial_model) != N_slices:
+                print N_slices
+                raise ValueError('Wrong length of initial_model list.')
+            return iter(initial_model)
+        else:
+            def constant_model(model):
+                for _ in xrange(N_slices):
+                    yield model
+            return constant_model(initial_model)
+    
+    
+    def fitSpectra(self, step=1, box_radius=0, initial_model=None):
+        selected_wl_ix = np.arange(0, self.Nl_obs, step)
+        initial_model = self._getInitialModelIterator(selected_wl_ix, initial_model)
+        slices = self.specSlicer(selected_wl_ix, box_radius)
         models = []
         for flux, noise, wl in slices:
             logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
-            imfit = Imfit(guess_model, self._PSF, quiet=True, nproc=self._nproc)
+            imfit = Imfit(initial_model.next(), self._PSF, quiet=True, nproc=self._nproc)
             imfit.fit(flux, noise)
             logger.debug('Valid pix: %d | Iterations: %d | chi2: %f' % (imfit.nValidPixels, imfit.nIter, imfit.chi2))
             fitted_model = imfit.getModelDescription()
@@ -178,7 +197,6 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             fitted_model.nValidPixels = imfit.nValidPixels
             models.append(fitted_model)
                 
-        selected_wl_ix = np.arange(0, self.Nl_obs, step)
         return models, selected_wl_ix
     
     
