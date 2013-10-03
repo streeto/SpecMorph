@@ -31,7 +31,7 @@ FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
 class BulgeDiskDecomposition(fitsQ3DataCube):
 
     def __init__(self, synthesisFile, smooth=True, target_vd=0.0,
-                 PSF_FWHM=0.0, PSF_beta=None, PSF_size=15, purge_cache=False, nproc=-1):
+                 PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=-1):
         self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
@@ -39,10 +39,10 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
         self.f_err_rest__lyx = self.zoneToYX(self.f_err_rest__lz, extensive=True, surface_density=False)
         self.f_flag_rest__lyx = self.zoneToYX(self.f_flag_rest__lz, extensive=False)
-        if PSF_beta is None:
-            self._PSF = gaussian_psf(PSF_FWHM, size=PSF_size)
-        else:
+        if PSF_beta > 0.0:
             self._PSF = moffat_psf(PSF_FWHM, PSF_beta, size=PSF_size)
+        else:
+            self._PSF = gaussian_psf(PSF_FWHM, size=PSF_size)
     
     
     def _loadRestFrameSpectra(self, filename, target_vd, purge_cache=False):
