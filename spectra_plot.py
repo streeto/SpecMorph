@@ -119,7 +119,7 @@ for i, colname in enumerate(colnames):
     ax.vlines(fit_l_obs[flag_bad], y.min(), y.max(), 'gray', alpha=0.5)
 plt.subplots_adjust(top=0.7)
 plt.suptitle('%s - %s' % (galaxyName, galaxyId))
-plt.savefig('%s-%s-fit-parameters.pdf' % (galaxyId, args.decompId))
+plt.savefig('plots/%s-%s-fit-parameters.pdf' % (galaxyId, args.decompId))
 
 
 ################################################################################
@@ -189,7 +189,7 @@ plt.colorbar(im, ax=ax)
 plt.subplots_adjust(top=0.87)
 
 plt.suptitle(r'%s - %s | Model images @ $5635\ \AA$, PSF FWHM = $%.1f$ arcsec' % (galaxyName, galaxyId, FWHM))
-plt.savefig('%s-%s-model-images.pdf' % (galaxyId, args.decompId))
+plt.savefig('plots/%s-%s-model-images.pdf' % (galaxyId, args.decompId))
 
 
 
@@ -244,7 +244,7 @@ ax.vlines(fit_l_obs[flag_bad], vmin, vmax, 'gray', alpha=0.5)
 ax.set_xlabel(r'$wavelength\ [\AA]$')
 ax.set_ylabel(r'$radius [arcsec]$')
 ax.legend()
-plt.savefig('%s-%s-model-quality.pdf' % (galaxyId, args.decompId))
+plt.savefig('plots/%s-%s-model-quality.pdf' % (galaxyId, args.decompId))
 
 
 db.close()
