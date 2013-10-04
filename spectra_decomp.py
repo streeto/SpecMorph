@@ -120,6 +120,10 @@ parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 parser.add_argument('--nproc', dest='nproc', type=int, default=-1,
                     help='Number of processors to use.')
+parser.add_argument('--multipass', dest='multipass', action='store_true',
+                    help='Use multiple passes and smoothing.')
+parser.add_argument('--smooth-radius', dest='smoothRadius', type=int, default=20,
+                    help='Radius of smoothing kernel, if multipass is enabled.')
 
 args = parser.parse_args()
 galaxyId = args.galaxyId[0]
@@ -139,7 +143,50 @@ decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0,
                                 PSF_FWHM=args.psfFWHM, PSF_beta=args.psfBeta, PSF_size=args.psfSize,
                                 nproc=args.nproc)
 models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
-logger.info('Done modeling, time: %.2f' % (time.time() - t1))
+logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
+
+if args.multipass:
+    t1 = time.time()
+    logger.info('Smoothing parameters.')
+    fit_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+    flags = fit_params['flag']
+    
+    def smooth_param_median(param, flags):
+        flag_ok = (flags == 0)
+        average_p = np.median(param[flag_ok])
+        return np.ones_like(param) * average_p
+    
+    def smooth_param_box(param, flags, radius):
+        p = param.copy()
+        N_par = len(param)
+        for i in xrange(N_par):
+            l1 = max(0, i - radius)
+            l2 = min(i + radius, N_par - 1)
+            flag_ok = (flags[l1:l2] == 0)
+            if flag_ok.any():
+                p[i] = np.median(param[l1:l2][flag_ok])
+        return p
+    
+    fit_params['x0'] = smooth_param_box(fit_params['x0'], flags, radius=args.smoothRadius)
+    fit_params['y0'] = smooth_param_box(fit_params['y0'], flags, radius=args.smoothRadius)
+    fit_params['PA_b'] = smooth_param_box(fit_params['PA_b'], flags, radius=args.smoothRadius)
+    fit_params['ell_b'] = smooth_param_box(fit_params['ell_b'], flags, radius=args.smoothRadius)
+    fit_params['PA_d'] = smooth_param_box(fit_params['PA_d'], flags, radius=args.smoothRadius)
+    fit_params['ell_d'] = smooth_param_box(fit_params['ell_d'], flags, radius=args.smoothRadius)
+    
+    for i, m in enumerate(models):
+        p = fit_params[i]
+        m.x0.setValue(p['x0'], fixed=True)
+        m.y0.setValue(p['y0'], fixed=True)
+        m.bulge.PA.setValue(p['PA_b'], fixed=True)
+        m.bulge.ell.setValue(p['ell_b'], fixed=True)
+        m.disk.PA.setValue(p['PA_d'], fixed=True)
+        m.disk.ell.setValue(p['ell_d'], fixed=True)
+    
+    logger.info('Starting second pass modeling...')
+    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius, initial_model=models)
+    logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
+    
 
 t1 = time.time()
 logger.info('Computing model spectra...')
