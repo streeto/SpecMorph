@@ -124,6 +124,9 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             noise[flag__l] = np.ma.masked
             noise = 1.0/np.sqrt(np.sum(noise**-2, axis=0))
             
+        # HACK: Valid noise should not be zero, but some spectra forget about it.
+        flag |= (noise == 0.0)
+        
         f[flag] = np.ma.masked
         f.fill_value = 0.0
 
