@@ -73,6 +73,10 @@ class GridManager(object):
         grid = GridFile()
         grid_template_file = path.join(self.starlightDir, 'grid.template.in')
         grid.loadFrom(grid_template_file)
+        if zone1 != zone2:
+            grid.name = 'grid_%04d-%04d' % (zone1, zone2)
+        else:
+            grid.name = 'grid_%04d' % zone1
         grid.starlightDir = self.starlightDir
         grid.randPhone = -958089828
         # grid.seed()
