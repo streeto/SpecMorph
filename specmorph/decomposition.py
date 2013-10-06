@@ -189,15 +189,23 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         models = []
         for flux, noise, wl in slices:
             logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
+            N_pix = (~flux.mask).sum()
             imfit = Imfit(initial_model.next(), self._PSF, quiet=True, nproc=self._nproc)
-            imfit.fit(flux, noise)
-            logger.debug('Valid pix: %d | Iterations: %d | chi2: %f' % (imfit.nValidPixels, imfit.nIter, imfit.chi2))
-            fitted_model = imfit.getModelDescription()
-            if not imfit.fitConverged or imfit.nPegged > 0 or imfit.nValidPixels < 1000:
-                logger.warn('Bad fit for wavelength: %.0f \\AA.' % wl)
+            if N_pix > 1000:
+                imfit.fit(flux, noise)
+                logger.debug('Valid pix: %d | Iterations: %d | pegged: %d | chi2: %f' % (imfit.nValidPixels, imfit.nIter, imfit.nPegged, imfit.chi2))
+                fitted_model = imfit.getModelDescription()
+                if not imfit.fitConverged or imfit.nPegged > 0:
+                    logger.warn('Bad fit: did not converge or pegged parameter.')
+                    fitted_model.flag = 1.0
+                fitted_model.chi2 = imfit.chi2
+                fitted_model.nValidPixels = imfit.nValidPixels
+            else:
+                logger.warn('Bad fit: not enough pixels (%d).' % N_pix)
+                fitted_model = imfit.getModelDescription()
                 fitted_model.flag = 1.0
-            fitted_model.chi2 = imfit.chi2
-            fitted_model.nValidPixels = imfit.nValidPixels
+                fitted_model.chi2 = np.nan
+                fitted_model.nValidPixels = N_pix
             models.append(fitted_model)
                 
         return models, selected_wl_ix
