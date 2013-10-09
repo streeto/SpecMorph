@@ -149,8 +149,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     def _guessInitialModel(self):
         # TODO: get rid of these magic galactic parameters.
         guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
-                                  I_e=0.06, r_e=11.0, PA_b=90.0, ell_b=0.35,
-                                  I_0=0.1, h=12.0, PA_d=90.0, ell_d=0.3)
+                                  I_e=0.1, r_e=14, n=2.6, PA_b=23.0, ell_b=0.29,
+                                  I_0=0.1, h=12, PA_d=10, ell_d=0.3)
         logger.debug('Initial model:\n%s\n' % guess_model)
         # Fit qSignal to find the first guess.
         imfit = Imfit(guess_model, self._PSF, quiet=True, nproc=self._nproc)

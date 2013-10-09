@@ -39,32 +39,49 @@ flag_ok = (t.cols.flag[:] == 0.0)
 flag_bad = (t.cols.flag[:] > 0.0)
 fit_l_obs = grp.l_obs[:]
 
-colnames = ['I_e',
+colnames = [
             'I_0',
-            'x0',
-            'r_e',
+            'I_e',
+            'n',
             'h',
-            'y0',
-            'PA_b',
+            'r_e',
+            'x0',
             'PA_d',
-            'chi2',
-            'ell_b',
+            'PA_b',
+            'y0',
             'ell_d',
-            'n_pix',
+            'ell_b',
+            'chi2',
             ]
+
+limits = {'I_e': (-18, -16),
+          'r_e': (0, 20),
+          'PA_b': (0, 40),
+          'ell_b': (0.6, 0.9),
+          'I_0': (-18, -16),
+          'h': (0, 20),
+          'PA_d': (0, 40),
+          'ell_d': (0.6, 0.9),
+          'x0': None,
+          'y0': None,
+          'chi2': None,
+          'n_pix': None,
+          'n': (2,4),
+          }
 
 ylabel = {'I_e': r'$\log I_e\ [erg / s /cm^2 / \AA]$',
           'r_e': r'$r_e\ [arcsec]$',
-          'PA_b': r'$P.A.\ [degrees]\ (bulge)$',
-          'ell_b': r'$b/a\ (bulge)$',
+          'PA_b': r'$P.A.\ [degrees]$ (bulge)',
+          'ell_b': r'$b/a$ (bulge)',
           'I_0': r'$\log I_0\ [erg / s /cm^2 / \AA]$',
           'h': r'$h\ [arcsec]$',
-          'PA_d': r'$P.A.\ [degrees]\ (disk)$',
-          'ell_d': r'$b/a\ (disk)$',
+          'PA_d': r'$P.A.\ [degrees]$ (disk)',
+          'ell_d': r'$b/a$ (disk)',
           'x0': r'$X_{center}\ [pixel]$',
           'y0': r'$Y_{center}\ [pixel]$',
           'chi2': r'$\chi^2$',
           'n_pix': r'$N_{pix}$',
+          'n': r'Sersic index $(n)$',
           }
 
 nothing = lambda x: x
@@ -83,6 +100,7 @@ func = {'I_e': log10flux,
         'y0': nothing,
         'chi2': nothing,
         'n_pix': nothing,
+        'n': nothing,
         }
 
 plotpars = {'legend.fontsize': 8,
@@ -112,11 +130,19 @@ gs = plt.GridSpec(4, 3)
 for i, colname in enumerate(colnames):
     if colname is None: continue
     ax = plt.subplot(gs[i])
-    y = func[colname](t.col(colname))[flag_ok]
-    ax.plot(fit_l_obs[flag_ok], y, 'k')
+    y = np.ma.array(func[colname](t.col(colname)), mask=flag_bad)
+    l = np.ma.array(fit_l_obs, mask=flag_bad)
+    ax.plot(l, y, 'k')
     ax.set_ylabel(ylabel[colname])
-    ax.set_xlabel(r'$wavelength\ [\AA]$')
-    ax.vlines(fit_l_obs[flag_bad], y.min(), y.max(), 'gray', alpha=0.5)
+    ax.set_xlabel(r'wavelength $[\AA]$')
+    if limits[colname] is not None:
+        ymin = limits[colname][0]
+        ymax = limits[colname][1]
+    else:
+        ymin = y.min()
+        ymax = y.max()
+    ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
+    ax.set_ylim(ymin, ymax)
 plt.subplots_adjust(top=0.7)
 plt.suptitle('%s - %s' % (galaxyName, galaxyId))
 plt.savefig('plots/%s_%s_%s-fit-parameters.pdf' % (galaxyId, runId, args.decompId))
@@ -135,7 +161,6 @@ gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
 l1 = l_range[0]
 l2 = l_range[-1]
-imshape = grp.f_syn_bulge__lyx.shape[1:]
 x0 = t.cols.x0[0]
 y0 = t.cols.y0[0]
 
@@ -204,45 +229,61 @@ fig.set_tight_layout(True)
 gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
-f_syn = grp.f_syn__lyx[:,37,37][flag_ok]
-f_disk = grp.f_syn_disk__lyx[:,37,37][flag_ok]
-f_bulge = grp.f_syn_bulge__lyx[:,37,37][flag_ok]
+l = np.ma.array(fit_l_obs, mask=flag_bad)
+f_syn = np.ma.array(grp.f_syn__lyx[:,37,37], mask=flag_bad)
+f_disk = np.ma.array(grp.f_syn_disk__lyx[:,37,37], mask=flag_bad)
+f_bulge = np.ma.array(grp.f_syn_bulge__lyx[:,37,37], mask=flag_bad)
 f_res = f_syn - f_disk - f_bulge
 vmin = min(f_syn.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_syn.max(), f_disk.max(), f_bulge.max(), f_res.max())
-ax.plot(fit_l_obs[flag_ok], f_syn, 'g', label='synthetic')
-ax.plot(fit_l_obs[flag_ok], f_disk, 'b', label='disk model')
-ax.plot(fit_l_obs[flag_ok], f_bulge, 'r', label='bulge model')
-ax.plot(fit_l_obs[flag_ok], f_res, 'm', label='residual')
+ax.plot(l, f_syn, 'k', label='synthetic')
+ax.plot(l, f_disk, 'b', label='disk model')
+ax.plot(l, f_bulge, 'r', label='bulge model')
+ax.plot(l, f_res, 'm', label='residual')
 ax.vlines(fit_l_obs[flag_bad], vmin, vmax, 'gray', alpha=0.5)
-ax.set_xlabel(r'$wavelength\ [\AA]$')
+ax.set_xlabel(r'wavelength $[\AA]$')
 ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
 ax.text(0.1, 0.9, r'%s - %s | $R\ =\ 5\ arcsec$ | $\Delta\lambda\ =\ %d\ \AA$' % (galaxyName, galaxyId, 4*box_radius+2),
         transform=ax.transAxes)
 ax.legend()
 
 ax = plt.subplot(gs[2])
-I_e = func['I_e'](t.col('I_e'))[flag_ok]
-I_0 = func['I_0'](t.col('I_0'))[flag_ok]
+l = np.ma.array(fit_l_obs, mask=flag_bad)
+I_e = np.ma.array(func['I_e'](t.col('I_e')), mask=flag_bad)
+I_0 = np.ma.array(func['I_0'](t.col('I_0')), mask=flag_bad)
 vmin = min(I_e.min(), I_0.min())
 vmax = max(I_e.max(), I_0.max())
-ax.plot(fit_l_obs[flag_ok], I_0, 'b', label=r'Disk ($I_{0}$)')
-ax.plot(fit_l_obs[flag_ok], I_e, 'r', label=r'Bulge ($I_{e}$)')
-ax.vlines(fit_l_obs[flag_bad], vmin, vmax, 'gray', alpha=0.5)
-ax.set_xlabel(r'$wavelength\ [\AA]$')
-ax.set_ylabel(r'$\log\ intensity$')
+ax.plot(l, I_0, 'b', label=r'Disk $(I_{0})$')
+ax.plot(l, I_e, 'r', label=r'Bulge $(I_{e})$')
+if limits['I_0'] is not None:
+    ymin = limits['I_0'][0]
+    ymax = limits['I_0'][1]
+else:
+    ymin = y.min()
+    ymax = y.max()
+ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
+ax.set_ylim(ymin, ymax)
+ax.set_xlabel(r'wavelength $[\AA]$')
+ax.set_ylabel(r'$\log\ I$')
 ax.legend()
 
 ax = plt.subplot(gs[3])
-r_e = func['r_e'](t.col('r_e'))[flag_ok]
-h = func['h'](t.col('h'))[flag_ok]
+r_e = np.ma.array(func['r_e'](t.col('r_e')), mask=flag_bad)
+h = np.ma.array(func['h'](t.col('h')), mask=flag_bad)
 vmin = min(r_e.min(), h.min())
 vmax = max(r_e.max(), h.max())
-ax.plot(fit_l_obs[flag_ok], h, 'b', label=r'Disk ($h$)')
-ax.plot(fit_l_obs[flag_ok], r_e, 'r', label=r'Bulge ($r_{e}$)')
-ax.vlines(fit_l_obs[flag_bad], vmin, vmax, 'gray', alpha=0.5)
-ax.set_xlabel(r'$wavelength\ [\AA]$')
-ax.set_ylabel(r'$radius [arcsec]$')
+ax.plot(l, h, 'b', label=r'Disk $(h)$')
+ax.plot(l, r_e, 'r', label=r'Bulge $(r_{e})$')
+if limits['r_e'] is not None:
+    ymin = limits['r_e'][0]
+    ymax = limits['r_e'][1]
+else:
+    ymin = y.min()
+    ymax = y.max()
+ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
+ax.set_ylim(ymin, ymax)
+ax.set_xlabel(r'wavelength $[\AA]$')
+ax.set_ylabel(r'radius $[arcsec]$')
 ax.legend()
 plt.savefig('plots/%s_%s_%s-model-quality.pdf' % (galaxyId, runId, args.decompId))
 
