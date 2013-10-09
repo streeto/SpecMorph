@@ -5,6 +5,7 @@ Created on Jun 6, 2013
 '''
 
 import matplotlib
+from pycasso.util import getImageDistance, radialProfile, getEllipseParams
 matplotlib.use('PDF')
 import matplotlib.pyplot as plt
 import numpy as np
@@ -286,6 +287,67 @@ ax.set_xlabel(r'wavelength $[\AA]$')
 ax.set_ylabel(r'radius $[arcsec]$')
 ax.legend()
 plt.savefig('plots/%s_%s_%s-model-quality.pdf' % (galaxyId, runId, args.decompId))
+
+################################################################################
+##########
+########## Radial profiles
+##########
+################################################################################
+fig = plt.figure(4, figsize=(8, 10))
+plt.clf()
+fig.set_tight_layout(True)
+N_col = 5
+N_row = 6
+N_cell = N_col * N_row
+delta_l = len(fit_l_obs) / N_cell
+l_bins = np.arange(0, len(fit_l_obs), delta_l)
+gs = plt.GridSpec(N_row, N_col)
+bin_r = np.arange(30)
+bin_c = bin_r[:-1] + 0.5
+
+for i in xrange(N_col):
+    for j in xrange(N_row):
+        ax = plt.subplot(gs[j, i])
+        cell = j * N_col + i
+        l1 = l_bins[cell]
+        if cell < N_cell:
+            l2 = l_bins[cell+1]
+        else:
+            l2 = len(fit_l_obs) - 1
+        l = l1
+        while l < l2:
+            if t.cols.flag[l] == 0:
+                break
+            l += 1
+        else:
+            print 'Only flagged stuff in the interval [%d:%d]' % (fit_l_obs[l1], fit_l_obs[l2])
+            l = l1
+        wl = fit_l_obs[l]
+        x0 = t.cols.x0[l]
+        y0 = t.cols.y0[l]
+        bulge_im = grp.f_syn_bulge__lyx[l]
+        disk_im = grp.f_syn_disk__lyx[l]
+        syn_im = grp.f_syn__lyx[l]
+        pa, ba = getEllipseParams(syn_im, x0, y0)
+        r__yx = getImageDistance(syn_im.shape, x0, y0, pa, ba)
+        bulge_r = radialProfile(bulge_im, r__yx, bin_r, rad_scale=1.0)
+        disk_r = radialProfile(disk_im, r__yx, bin_r, rad_scale=1.0)
+        syn_r = radialProfile(syn_im, r__yx, bin_r, rad_scale=1.0)
+        
+        ax.plot(bin_c, np.log10(syn_r), 'k', label='synthetic')
+        ax.plot(bin_c, np.log10(disk_r + bulge_r), 'k:', label='model')
+        ax.plot(bin_c, np.log10(disk_r), 'b:', label='disk model')
+        ax.plot(bin_c, np.log10(bulge_r), 'r:', label='bulge model')
+        ax.text(0.5, 0.85, r'$%d\ \AA$' % wl, transform=ax.transAxes)
+        ax.set_ylim(-18, -15.5)
+        if i == 0 and j == (N_row - 1):
+            ax.set_xlabel(r'radius $[arcsec]$')
+            ax.set_ylabel(r'$\log F_\lambda\ [erg / s / cm^2 / \AA]$')
+        else:
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+
+plt.savefig('plots/%s_%s_%s-radial-profile.pdf' % (galaxyId, runId, args.decompId))
 
 
 db.close()
