@@ -10,9 +10,7 @@ from imfit.fitting import Imfit
 from imfit.psf import moffat_psf, gaussian_psf
 
 import numpy as np
-from os import path, unlink
 
-from .velocity_fix import SpectraVelocityFixer
 from .model import GalaxyModel
 import collections
 
@@ -28,7 +26,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
                  PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=-1):
         self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
-        self._loadRestFrameSpectra(synthesisFile + '.rest-spectra.h5', target_vd, purge_cache)
+        self._calcRestFrameSpectra(target_vd)
         self.f_syn_rest__lyx = self.zoneToYX(self.f_syn_rest__lz, extensive=True, surface_density=False)
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
         self.f_err_rest__lyx = self.zoneToYX(self.f_err_rest__lz, extensive=True, surface_density=False)
@@ -39,66 +37,15 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             self._PSF = gaussian_psf(PSF_FWHM, size=PSF_size)
     
     
-    def _loadRestFrameSpectra(self, filename, target_vd, purge_cache=False):
-        try:
-            from tables import openFile, Filters
-            from tables import Float64Atom  # @UnresolvedImport
-        except:
-            logger.warn('Pytables not installed, rest frame spectra cache disabled.')
-            self._calcRestFrameSpectra(target_vd)
-            return
-
-        if path.exists(filename):
-            if purge_cache:
-                logger.debug('Forced purge of rest frame spectra cache.')
-                unlink(filename)
-            else:            
-                f = openFile(filename, 'r')
-                try:
-                    self.f_syn_rest__lz = f.root.f_syn_rest__lz[...]
-                    self.f_obs_rest__lz = f.root.f_obs_rest__lz[...]
-                    self.f_err_rest__lz = f.root.f_err_rest__lz[...]
-                    self.f_flag_rest__lz = f.root.f_flag_rest__lz[...]
-                    logger.debug('Rest frame spectra cache loaded successfully.')
-                    return
-                except:
-                    logger.warn('Purging corrupt rest frame spectra cache.')
-                    f.close()
-                    unlink(filename)
-                finally:
-                    f.close()
-        else:
-            logger.warn('Rest frame spectra cache not found.')
-
-        self._calcRestFrameSpectra(target_vd)
-        f = openFile(filename, 'w')
-        try:
-            ca = f.createCArray('/', 'f_syn_rest__lz', Float64Atom(),
-                                self.f_syn_rest__lz.shape, filters=Filters(1, 'blosc'))
-            ca[...] = self.f_syn_rest__lz
-            ca = f.createCArray('/', 'f_obs_rest__lz', Float64Atom(),
-                                self.f_obs_rest__lz.shape, filters=Filters(1, 'blosc'))
-            ca[...] = self.f_obs_rest__lz
-            ca = f.createCArray('/', 'f_err_rest__lz', Float64Atom(),
-                                self.f_err_rest__lz.shape, filters=Filters(1, 'blosc'))
-            ca[...] = self.f_err_rest__lz
-            ca = f.createCArray('/', 'f_flag_rest__lz', Float64Atom(),
-                                self.f_flag_rest__lz.shape, filters=Filters(1, 'blosc'))
-            ca[...] = self.f_flag_rest__lz
-            
-        finally:
-            f.close()
-
-
     def _calcRestFrameSpectra(self, target_vd):
+        from pystarlight.util.velocity_fix import SpectraVelocityFixer
         fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
-        logger.warn('Computing rest frame spectra from scratch... (go take a coffee)')
+        logger.debug('Computing rest frame spectra from scratch...')
         self.f_syn_rest__lz = fix_spectra(self.f_syn, target_vd)
         self.f_obs_rest__lz = fix_spectra(self.f_obs, target_vd)
         self.f_err_rest__lz = fix_spectra(self.f_err, target_vd)
         # flag anything that touched a flagged pixel.
         self.f_flag_rest__lz = np.where(fix_spectra(self.f_flag, target_vd) > 0.0, 1.0, 0.0)
-        logger.warn('Done.')
     
     
     def _getSpectraSlice(self, l1, l2=None, flag_ratio_threshold=0.5):
