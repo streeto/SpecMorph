@@ -41,9 +41,9 @@ def get_planes_image(l_obs, f__lz, l_mask, decomp):
     
     mask = decomp.qMask
     snout = calc_sn(l, f_obs__lyx[:,mask], f_flag__lyx[:,mask])
-    planes['Signal'][:,mask] = snout[0]
-    planes['Noise'][:,mask] = snout[1]
-    planes['Sn'][:,mask] = snout[2]
+    planes['Signal'][mask] = snout[0]
+    planes['Noise'][mask] = snout[1]
+    planes['Sn'][mask] = snout[2]
     return  planes
 ################################################################################
 
