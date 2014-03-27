@@ -151,6 +151,7 @@ if args.multipass:
     fit_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     flags = fit_params['flag']
     
+    fit_l_obs = decomp.l_obs[fit_l_ix]
     def smooth_param_median(param, flags):
         flag_ok = (flags == 0)
         average_p = np.median(param[flag_ok])
@@ -167,24 +168,54 @@ if args.multipass:
                 p[i] = np.median(param[l1:l2][flag_ok])
         return p
     
-    fit_params['x0'] = smooth_param_box(fit_params['x0'], flags, radius=args.smoothRadius)
-    fit_params['y0'] = smooth_param_box(fit_params['y0'], flags, radius=args.smoothRadius)
-    fit_params['PA_b'] = smooth_param_box(fit_params['PA_b'], flags, radius=args.smoothRadius)
-    fit_params['ell_b'] = smooth_param_box(fit_params['ell_b'], flags, radius=args.smoothRadius)
-    fit_params['PA_d'] = smooth_param_box(fit_params['PA_d'], flags, radius=args.smoothRadius)
-    fit_params['ell_d'] = smooth_param_box(fit_params['ell_d'], flags, radius=args.smoothRadius)
+    def smooth_param_linear(param, flags, l_obs):
+        flag_ok = (flags == 0)
+        from astropy.modeling import models, fitting
+        line = models.Linear1D(0.0, 0.0)
+        fit = fitting.LinearLSQFitter()
+        line_fitted = fit(line, l_obs[flag_ok], param[flag_ok])
+#         print 'line params: slope = %f, intercept = %f' % (line_fitted.slope.value, line_fitted.intercept.value) 
+#         import matplotlib.pyplot as plt
+#         plt.ioff()
+#         plt.plot(l_obs[flag_ok], param[flag_ok], 'ok')
+#         plt.plot(l_obs, line_fitted(l_obs), '-r')
+#         plt.show()
+        return line_fitted(l_obs)
+    
+#     fit_params['x0'] = smooth_param_box(fit_params['x0'], flags, radius=args.smoothRadius)
+#     fit_params['y0'] = smooth_param_box(fit_params['y0'], flags, radius=args.smoothRadius)
+#     fit_params['r_e'] = smooth_param_box(fit_params['r_e'], flags, radius=args.smoothRadius)
+#     fit_params['n'] = smooth_param_box(fit_params['n'], flags, radius=args.smoothRadius)
+#     fit_params['PA_b'] = smooth_param_box(fit_params['PA_b'], flags, radius=args.smoothRadius)
+#     fit_params['ell_b'] = smooth_param_box(fit_params['ell_b'], flags, radius=args.smoothRadius)
+#     fit_params['h'] = smooth_param_box(fit_params['h'], flags, radius=args.smoothRadius)
+#     fit_params['PA_d'] = smooth_param_box(fit_params['PA_d'], flags, radius=args.smoothRadius)
+#     fit_params['ell_d'] = smooth_param_box(fit_params['ell_d'], flags, radius=args.smoothRadius)
+
+    fit_params['x0'] = smooth_param_linear(fit_params['x0'], flags, fit_l_obs)
+    fit_params['y0'] = smooth_param_linear(fit_params['y0'], flags, fit_l_obs)
+    fit_params['r_e'] = smooth_param_linear(fit_params['r_e'], flags, fit_l_obs)
+    fit_params['n'] = smooth_param_linear(fit_params['n'], flags, fit_l_obs)
+    fit_params['PA_b'] = smooth_param_linear(fit_params['PA_b'], flags, fit_l_obs)
+    fit_params['ell_b'] = smooth_param_linear(fit_params['ell_b'], flags, fit_l_obs)
+    fit_params['h'] = smooth_param_linear(fit_params['h'], flags, fit_l_obs)
+    fit_params['PA_d'] = smooth_param_linear(fit_params['PA_d'], flags, fit_l_obs)
+    fit_params['ell_d'] = smooth_param_linear(fit_params['ell_d'], flags, fit_l_obs)
     
     for i, m in enumerate(models):
         p = fit_params[i]
         m.x0.setValue(p['x0'], fixed=True)
         m.y0.setValue(p['y0'], fixed=True)
+        m.bulge.r_e.setValue(p['r_e'], fixed=True)
+        m.bulge.n.setValue(p['n'], fixed=True)
         m.bulge.PA.setValue(p['PA_b'], fixed=True)
         m.bulge.ell.setValue(p['ell_b'], fixed=True)
+        m.disk.h.setValue(p['h'], fixed=True)
         m.disk.PA.setValue(p['PA_d'], fixed=True)
         m.disk.ell.setValue(p['ell_d'], fixed=True)
     
     logger.info('Starting second pass modeling...')
-    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius, initial_model=models)
+    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius, initial_model=models, insist=True)
     logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
     
 
