@@ -288,11 +288,11 @@ i_f_disk__l['f_obs'], i_f_disk__l['f_err'], i_f_disk__l['f_flag'] = integrated_s
 logger.info('Creating qbick planes...')
 l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
 total_planes = get_planes_image(fit_l_obs, f__lz, l_mask, decomp)
-save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s-total-planes.fits' % (galaxyId, args.decompId)))
+save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s_%s-total-planes.fits' % (galaxyId, runId, args.decompId)))
 bulge_planes = get_planes_image(fit_l_obs, f_bulge__lz, l_mask, decomp)
-save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s-bulge-planes.fits' % (galaxyId, args.decompId)))
+save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s_%s-bulge-planes.fits' % (galaxyId, runId, args.decompId)))
 disk_planes = get_planes_image(fit_l_obs, f_disk__lz, l_mask, decomp)
-save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s-disk-planes.fits' % (galaxyId, args.decompId)))
+save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s_%s-disk-planes.fits' % (galaxyId, runId, args.decompId)))
 
 
 logger.info('Saving to storage...')
