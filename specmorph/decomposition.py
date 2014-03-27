@@ -6,8 +6,7 @@ Created on Jun 6, 2013
 
 from pycasso import fitsQ3DataCube
 from pycasso.util import logger
-from imfit.fitting import Imfit
-from imfit.psf import moffat_psf, gaussian_psf
+from imfit import Imfit, moffat_psf, gaussian_psf
 
 import numpy as np
 
@@ -94,17 +93,21 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def _guessInitialModel(self):
-        # TODO: get rid of these magic galactic parameters.
-        guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
-                                  I_e=0.1, r_e=14, n=2.6, PA_b=23.0, ell_b=0.29,
-                                  I_0=0.1, h=12, PA_d=10, ell_d=0.3)
-        logger.debug('Initial model:\n%s\n' % guess_model)
-        # Fit qSignal to find the first guess.
-        imfit = Imfit(guess_model, self._PSF, quiet=True, nproc=self._nproc)
         mask = ~self.qMask
         qSignal = np.ma.array(self.qSignal, mask=mask)
         qNoise = np.ma.array(self.qNoise, mask=mask)
-        imfit.fit(qSignal, qNoise)
+
+        # TODO: get rid of these magic galactic parameters.
+        # FIXME: The guess values are irrelevant to DE fitting.
+        pa, ba = self.getEllipseParams()
+        ell = 1 - ba
+        guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
+                                  I_e=qSignal.max(), r_e=self.HLR_pix, n=3, PA_b=pa, ell_b=ell,
+                                  I_0=qSignal.max(), h=self.HLR_pix, PA_d=pa, ell_d=ell)
+        logger.debug('Initial model:\n%s\n' % guess_model)
+        # Fit qSignal to find the first guess.
+        imfit = Imfit(guess_model, self._PSF, quiet=False, nproc=self._nproc)
+        imfit.fit(qSignal, qNoise, mode='DE')
         guess_model = imfit.getModelDescription()
         logger.debug('Refined initial model:\n%s\n' % guess_model)
         return guess_model
@@ -114,7 +117,6 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         N_slices = len(selected_wl_ix)
         if initial_model is None:
             initial_model = self._guessInitialModel()
-            logger.debug('Guessed initial model:\n%s\n' % initial_model)
 
         if isinstance(initial_model, collections.Iterable):
             print len(initial_model)
@@ -129,7 +131,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             return constant_model(initial_model)
     
     
-    def fitSpectra(self, step=1, box_radius=0, initial_model=None):
+    def fitSpectra(self, step=1, box_radius=0, initial_model=None, insist=False):
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
         initial_model = self._getInitialModelIterator(selected_wl_ix, initial_model)
         slices = self.specSlicer(selected_wl_ix, box_radius)
@@ -139,12 +141,18 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             N_pix = (~flux.mask).sum()
             imfit = Imfit(initial_model.next(), self._PSF, quiet=True, nproc=self._nproc)
             if N_pix > 1000:
-                imfit.fit(flux, noise)
+                imfit.fit(flux, noise, mode='LM')
                 logger.debug('Valid pix: %d | Iterations: %d | pegged: %d | chi2: %f' % (imfit.nValidPixels, imfit.nIter, imfit.nPegged, imfit.chi2))
                 fitted_model = imfit.getModelDescription()
                 if not imfit.fitConverged or imfit.nPegged > 0:
                     logger.warn('Bad fit: did not converge or pegged parameter.')
                     fitted_model.flag = 1.0
+                    if insist:
+                        logger.warn('     Trying N-M simplex and hoping for the best.')
+                        imfit.fit(flux, noise, mode='NM')
+                        fitted_model = imfit.getModelDescription()
+                        # TODO: how to check if this worked?
+                        fitted_model.flag = 0.0
                 fitted_model.chi2 = imfit.chi2
                 fitted_model.nValidPixels = imfit.nValidPixels
             else:
