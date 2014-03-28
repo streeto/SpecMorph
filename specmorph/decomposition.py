@@ -101,6 +101,9 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         # FIXME: The guess values are irrelevant to DE fitting.
         pa, ba = self.getEllipseParams()
         ell = 1 - ba
+        pa = pa * 180.0 / np.pi
+        if pa < 0.0:
+            pa += 180.0
         guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
                                   I_e=qSignal.max(), r_e=self.HLR_pix, n=3, PA_b=pa, ell_b=ell,
                                   I_0=qSignal.max(), h=self.HLR_pix, PA_d=pa, ell_d=ell)
