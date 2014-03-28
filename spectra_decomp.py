@@ -6,6 +6,7 @@ Created on Jun 6, 2013
 
 from pycasso.util import logger
 from specmorph import BulgeDiskDecomposition
+from specmorph.model import GalaxyModel
 from specmorph.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
 
 from tables import openFile, Filters
@@ -90,6 +91,44 @@ def save_array(db, parent, name, data, overwrite=False):
 
 
 ################################################################################
+def smooth_param_median(param, flags):
+    flag_ok = (flags == 0)
+    average_p = np.median(param[flag_ok])
+    return np.ones_like(param) * average_p
+################################################################################
+
+
+################################################################################
+def smooth_param_box(param, flags, radius):
+    p = param.copy()
+    N_par = len(param)
+    for i in xrange(N_par):
+        l1 = max(0, i - radius)
+        l2 = min(i + radius, N_par - 1)
+        flag_ok = (flags[l1:l2] == 0)
+        if flag_ok.any():
+            p[i] = np.median(param[l1:l2][flag_ok])
+    return p
+################################################################################
+
+
+################################################################################
+def smooth_param_polynomial(param, param_l_obs, param_flags, l_obs, degree=1):
+    flag_ok = (param_flags == 0)
+    from astropy.modeling import models, fitting
+    line = models.Polynomial1D(degree)
+    fit = fitting.LinearLSQFitter()
+    param_fitted = fit(line, param_l_obs[flag_ok], param[flag_ok])
+    import matplotlib.pyplot as plt
+    plt.ioff()
+    plt.plot(param_l_obs[flag_ok], param[flag_ok], 'ok')
+    plt.plot(l_obs, param_fitted(l_obs), '-r')
+    plt.show()
+    return param_fitted(l_obs)
+################################################################################
+
+
+################################################################################
 parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
 
 parser.add_argument('galaxyId', type=str, nargs=1,
@@ -137,73 +176,36 @@ if args.verbose:
 
 dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
-t1 = time.time()
 logger.info('Starting fit for %s...' % galaxyId)
-decomp = BulgeDiskDecomposition(dbfile, target_vd=0.0,
+decomp = BulgeDiskDecomposition(dbfile, target_vd=300.0,
                                 PSF_FWHM=args.psfFWHM, PSF_beta=args.psfBeta, PSF_size=args.psfSize,
                                 nproc=args.nproc)
-models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
-logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
 
-if args.multipass:
+if not args.multipass:
+    t1 = time.time()
+    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
+    logger.info('Done modeling, time: %.2f' % (time.time() - t1))
+else:
+    t1 = time.time()
+    models, fit_l_ix = decomp.fitSpectra(step=50, box_radius=50, mode='NM')
+    logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
     t1 = time.time()
     logger.info('Smoothing parameters.')
-    fit_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-    flags = fit_params['flag']
     
-    fit_l_obs = decomp.l_obs[fit_l_ix]
-    def smooth_param_median(param, flags):
-        flag_ok = (flags == 0)
-        average_p = np.median(param[flag_ok])
-        return np.ones_like(param) * average_p
-    
-    def smooth_param_box(param, flags, radius):
-        p = param.copy()
-        N_par = len(param)
-        for i in xrange(N_par):
-            l1 = max(0, i - radius)
-            l2 = min(i + radius, N_par - 1)
-            flag_ok = (flags[l1:l2] == 0)
-            if flag_ok.any():
-                p[i] = np.median(param[l1:l2][flag_ok])
-        return p
-    
-    def smooth_param_linear(param, flags, l_obs):
-        flag_ok = (flags == 0)
-        from astropy.modeling import models, fitting
-        line = models.Linear1D(0.0, 0.0)
-        fit = fitting.LinearLSQFitter()
-        line_fitted = fit(line, l_obs[flag_ok], param[flag_ok])
-#         print 'line params: slope = %f, intercept = %f' % (line_fitted.slope.value, line_fitted.intercept.value) 
-#         import matplotlib.pyplot as plt
-#         plt.ioff()
-#         plt.plot(l_obs[flag_ok], param[flag_ok], 'ok')
-#         plt.plot(l_obs, line_fitted(l_obs), '-r')
-#         plt.show()
-        return line_fitted(l_obs)
-    
-#     fit_params['x0'] = smooth_param_box(fit_params['x0'], flags, radius=args.smoothRadius)
-#     fit_params['y0'] = smooth_param_box(fit_params['y0'], flags, radius=args.smoothRadius)
-#     fit_params['r_e'] = smooth_param_box(fit_params['r_e'], flags, radius=args.smoothRadius)
-#     fit_params['n'] = smooth_param_box(fit_params['n'], flags, radius=args.smoothRadius)
-#     fit_params['PA_b'] = smooth_param_box(fit_params['PA_b'], flags, radius=args.smoothRadius)
-#     fit_params['ell_b'] = smooth_param_box(fit_params['ell_b'], flags, radius=args.smoothRadius)
-#     fit_params['h'] = smooth_param_box(fit_params['h'], flags, radius=args.smoothRadius)
-#     fit_params['PA_d'] = smooth_param_box(fit_params['PA_d'], flags, radius=args.smoothRadius)
-#     fit_params['ell_d'] = smooth_param_box(fit_params['ell_d'], flags, radius=args.smoothRadius)
+    first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+    initial_params = np.empty(len(decomp.l_obs), dtype=first_pass_params.dtype)
 
-    fit_params['x0'] = smooth_param_linear(fit_params['x0'], flags, fit_l_obs)
-    fit_params['y0'] = smooth_param_linear(fit_params['y0'], flags, fit_l_obs)
-    fit_params['r_e'] = smooth_param_linear(fit_params['r_e'], flags, fit_l_obs)
-    fit_params['n'] = smooth_param_linear(fit_params['n'], flags, fit_l_obs)
-    fit_params['PA_b'] = smooth_param_linear(fit_params['PA_b'], flags, fit_l_obs)
-    fit_params['ell_b'] = smooth_param_linear(fit_params['ell_b'], flags, fit_l_obs)
-    fit_params['h'] = smooth_param_linear(fit_params['h'], flags, fit_l_obs)
-    fit_params['PA_d'] = smooth_param_linear(fit_params['PA_d'], flags, fit_l_obs)
-    fit_params['ell_d'] = smooth_param_linear(fit_params['ell_d'], flags, fit_l_obs)
+    flags = first_pass_params['flag']
+    first_pass_l_obs = decomp.l_obs[fit_l_ix]
     
-    for i, m in enumerate(models):
-        p = fit_params[i]
+    for p in first_pass_params.dtype.names:
+        if p in ['flag', 'chi2', 'n_pix']: continue
+        initial_params[p] = smooth_param_polynomial(first_pass_params[p], first_pass_l_obs, flags,
+                                                    decomp.l_obs, degree=1)
+    
+    models = []
+    for p in initial_params:
+        m = GalaxyModel.fromParamVector(p)
         m.x0.setValue(p['x0'], fixed=True)
         m.y0.setValue(p['y0'], fixed=True)
         m.bulge.r_e.setValue(p['r_e'], fixed=True)
@@ -213,9 +215,11 @@ if args.multipass:
         m.disk.h.setValue(p['h'], fixed=True)
         m.disk.PA.setValue(p['PA_d'], fixed=True)
         m.disk.ell.setValue(p['ell_d'], fixed=True)
+        models.append(m)
     
     logger.info('Starting second pass modeling...')
-    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius, initial_model=models, insist=True)
+    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
+                                         initial_model=models, mode='LM', insist=True)
     logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
     
 

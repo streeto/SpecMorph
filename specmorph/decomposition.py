@@ -113,17 +113,18 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         return guess_model
 
 
-    def _getInitialModelIterator(self, selected_wl_ix, initial_model):
+    def _getInitialModelIterator(self, initial_model, selected_wl_ix):
         N_slices = len(selected_wl_ix)
         if initial_model is None:
             initial_model = self._guessInitialModel()
 
         if isinstance(initial_model, collections.Iterable):
-            print len(initial_model)
-            if len(initial_model) != N_slices:
-                print N_slices
+            if len(initial_model) == N_slices:
+                return iter(initial_model)
+            elif len(initial_model) != self.Nl_obs:
+                return iter(initial_model[i] for i in selected_wl_ix)
+            else:
                 raise ValueError('Wrong length of initial_model list.')
-            return iter(initial_model)
         else:
             def constant_model(model):
                 for _ in xrange(N_slices):
@@ -131,36 +132,46 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             return constant_model(initial_model)
     
     
-    def fitSpectra(self, step=1, box_radius=0, initial_model=None, insist=False):
+    def _fit(self, flux, noise, model, mode='LM', insist=False):
+        N_pix = (~flux.mask).sum()
+        imfit = Imfit(model, self._PSF, quiet=True, nproc=self._nproc)
+        if N_pix > 1000:
+            imfit.fit(flux, noise, mode=mode)
+            logger.debug('Valid pix: %d | Iterations: %d | pegged: %d | chi2: %f' % \
+                         (imfit.nValidPixels, imfit.nIter, imfit.nPegged, imfit.chi2))
+            fitted_model = imfit.getModelDescription()
+            if not imfit.fitConverged or imfit.nPegged > 0:
+                logger.warn('Bad fit: did not converge or pegged parameter.')
+                fitted_model.flag = 1.0
+                if mode == 'LM' and insist:
+                    logger.warn('     Retrying using N-M simplex.')
+                    imfit.fit(flux, noise, mode='NM')
+                    fitted_model = imfit.getModelDescription()
+                    if imfit.fitConverged:
+                        logger.debug('     N-M simplex chi2: %f' % imfit.chi2)
+                    else:
+                        logger.warn('     Bad fit: N-M simplex did not converge.')
+                        logger.debug('     Initial model:\n%s\n\n' % str(model))
+                        fitted_model.flag = 0.0
+            fitted_model.chi2 = imfit.chi2
+            fitted_model.nValidPixels = imfit.nValidPixels
+        else:
+            logger.warn('Bad fit: not enough pixels (%d).' % N_pix)
+            fitted_model = imfit.getModelDescription()
+            fitted_model.flag = 1.0
+            fitted_model.chi2 = np.nan
+            fitted_model.nValidPixels = N_pix
+        return fitted_model
+
+
+    def fitSpectra(self, step=1, box_radius=0, initial_model=None, mode='LM', insist=False):
         selected_wl_ix = np.arange(0, self.Nl_obs, step)
-        initial_model = self._getInitialModelIterator(selected_wl_ix, initial_model)
+        initial_model = self._getInitialModelIterator(initial_model, selected_wl_ix)
         slices = self.specSlicer(selected_wl_ix, box_radius)
         models = []
         for flux, noise, wl in slices:
             logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
-            N_pix = (~flux.mask).sum()
-            imfit = Imfit(initial_model.next(), self._PSF, quiet=True, nproc=self._nproc)
-            if N_pix > 1000:
-                imfit.fit(flux, noise, mode='LM')
-                logger.debug('Valid pix: %d | Iterations: %d | pegged: %d | chi2: %f' % (imfit.nValidPixels, imfit.nIter, imfit.nPegged, imfit.chi2))
-                fitted_model = imfit.getModelDescription()
-                if not imfit.fitConverged or imfit.nPegged > 0:
-                    logger.warn('Bad fit: did not converge or pegged parameter.')
-                    fitted_model.flag = 1.0
-                    if insist:
-                        logger.warn('     Trying N-M simplex and hoping for the best.')
-                        imfit.fit(flux, noise, mode='NM')
-                        fitted_model = imfit.getModelDescription()
-                        # TODO: how to check if this worked?
-                        fitted_model.flag = 0.0
-                fitted_model.chi2 = imfit.chi2
-                fitted_model.nValidPixels = imfit.nValidPixels
-            else:
-                logger.warn('Bad fit: not enough pixels (%d).' % N_pix)
-                fitted_model = imfit.getModelDescription()
-                fitted_model.flag = 1.0
-                fitted_model.chi2 = np.nan
-                fitted_model.nValidPixels = N_pix
+            fitted_model = self._fit(flux, noise, initial_model.next(), mode, insist)
             models.append(fitted_model)
                 
         return models, selected_wl_ix

@@ -48,7 +48,14 @@ class GalaxyModel(SimpleModelDescription):
         if I_0 is not None and h is not None:
             disk = disk_function(I_0, h, PA_d, ell_d)
             self.addFunction(disk)
-        
+
+
+    @classmethod
+    def fromParamVector(cls, p):
+        return GalaxyModel(x0=p['x0'], y0=p['y0'],
+                           I_e=p['I_e'], r_e=p['r_e'], n=p['n'], PA_b=p['PA_b'], ell_b=p['ell_b'],
+                           I_0=p['I_0'], h=p['h'], PA_d=p['PA_d'], ell_d=p['ell_d'])
+
         
     def getBulge(self):
         model = SimpleModelDescription()
