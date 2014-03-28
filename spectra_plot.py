@@ -6,6 +6,7 @@ Created on Jun 6, 2013
 
 import matplotlib
 from pycasso.util import getImageDistance, radialProfile, getEllipseParams
+from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.use('PDF')
 import matplotlib.pyplot as plt
 import numpy as np
@@ -131,6 +132,7 @@ plt.rcParams.update(plotpars)
 ########## All fit parameters 
 ##########
 ################################################################################
+pdf = PdfPages('plots/%s_%s_%s.pdf' % (galaxyId, runId, args.decompId))
 fig = plt.figure(1, figsize=(8, 8))
 plt.clf()
 fig.set_tight_layout(True)
@@ -157,7 +159,7 @@ for i, colname in enumerate(colnames):
     ax.set_ylim(ymin, ymax)
 plt.subplots_adjust(top=0.7)
 plt.suptitle('%s - %s' % (galaxyName, galaxyId))
-plt.savefig('plots/%s_%s_%s-fit-parameters.pdf' % (galaxyId, runId, args.decompId))
+pdf.savefig(fig)
 
 
 ################################################################################
@@ -226,7 +228,7 @@ plt.colorbar(im, ax=ax)
 plt.subplots_adjust(top=0.87)
 
 plt.suptitle(r'%s - %s | Model images @ $5635\ \AA$, PSF FWHM = $%.1f$ arcsec' % (galaxyName, galaxyId, FWHM))
-plt.savefig('plots/%s_%s_%s-model-images.pdf' % (galaxyId, runId, args.decompId))
+pdf.savefig(fig)
 
 
 
@@ -297,7 +299,7 @@ ax.set_ylim(ymin, ymax)
 ax.set_xlabel(r'wavelength $[\AA]$')
 ax.set_ylabel(r'radius $[arcsec]$')
 ax.legend()
-plt.savefig('plots/%s_%s_%s-model-quality.pdf' % (galaxyId, runId, args.decompId))
+pdf.savefig(fig)
 
 ################################################################################
 ##########
@@ -358,7 +360,7 @@ for i in xrange(N_col):
             ax.set_xticklabels([])
             ax.set_yticklabels([])
 
-plt.savefig('plots/%s_%s_%s-radial-profile.pdf' % (galaxyId, runId, args.decompId))
+pdf.savefig(fig)
 
-
+pdf.close()
 db.close()
