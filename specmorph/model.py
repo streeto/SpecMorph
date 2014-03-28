@@ -13,6 +13,8 @@ __all__ = ['GalaxyModel']
 ################################################################################
 
 def bulge_function(I_e, r_e, n, PA, ell):
+    if I_e < 0.0: I_e = 1.0
+    if r_e < 0.0: r_e = 1.0
     bulge = function_description('Sersic', name='bulge')
     bulge.I_e.setValue(I_e, [1e-33, 10*I_e])
     bulge.r_e.setValue(r_e, [1e-33, 10*r_e])
@@ -24,6 +26,8 @@ def bulge_function(I_e, r_e, n, PA, ell):
 ################################################################################
 
 def disk_function(I_0, h, PA, ell):
+    if I_0 < 0.0: I_0 = 1.0
+    if h < 0.0: h = 1.0
     disk = function_description('Exponential', name='disk')
     disk.I_0.setValue(I_0, [1e-33, 10*I_0])
     disk.h.setValue(h, [1e-33, 10*h])
