@@ -326,6 +326,13 @@ t.attrs.y0 = decomp.y0
 t.append(fit_params)
 t.flush()
 
+if args.multipass:
+    t = db.createTable(grp, 'first_pass_parameters', fit_params.dtype, 'Morphology fisrt pass fit parameters', Filters(1, 'blosc'),
+              expectedrows=len(first_pass_params))
+    t.append(first_pass_params)
+    t.flush()
+    save_array(db, grp, 'first_pass_l_obs', first_pass_l_obs, args.overwrite)
+
 save_array(db, grp, 'qMask', decomp.qMask, args.overwrite)
 save_array(db, grp, 'qSignal', decomp.qSignal, args.overwrite)
 save_array(db, grp, 'qZones', decomp.qZones, args.overwrite)

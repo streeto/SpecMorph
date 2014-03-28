@@ -32,6 +32,13 @@ groupname = runId.replace('.', '_')
 db = tables.openFile(args.db, 'r')
 grp = db.getNode('/%s/%s/%s' % (args.decompId, groupname, galaxyId))
 t = grp.fit_parameters
+has_1p = False
+if 'first_pass_parameters' in grp:
+    has_1p = True
+    t_1p = grp.first_pass_parameters
+    l_obs_1p = grp.first_pass_l_obs[:]
+    flag_bad_1p = t_1p.cols.flag[:] > 0.0
+
 box_radius = t.attrs.box_radius
 FWHM = t.attrs.FWHM
 galaxyName = t.attrs.object_name
@@ -133,6 +140,10 @@ for i, colname in enumerate(colnames):
     ax = plt.subplot(gs[i])
     y = np.ma.array(func[colname](t.col(colname)), mask=flag_bad)
     l = np.ma.array(fit_l_obs, mask=flag_bad)
+    if has_1p:
+        y_1p = np.ma.array(func[colname](t_1p.col(colname)), mask=flag_bad_1p)
+        l_1p = np.ma.array(l_obs_1p, mask=flag_bad_1p)
+        ax.plot(l_1p, y_1p, '.r')
     ax.plot(l, y, 'k')
     ax.set_ylabel(ylabel[colname])
     ax.set_xlabel(r'wavelength $[\AA]$')
