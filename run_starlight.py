@@ -5,9 +5,9 @@ Created on Jun 17, 2013
 '''
 import tables
 from astropy.io import ascii
-from pystarlight.util.gridfile import GridFile, GridRun
+from pystarlight.util.gridfile import GridFile
 import numpy as np
-from os import path
+from os import path, makedirs as os_makedirs
 from pystarlight.util import starlight_runner as sr
 import argparse
 from multiprocessing import cpu_count
@@ -21,17 +21,18 @@ def write_table(wl, flux, err, flags, filename):
 
 
 ###############################################################################
+def makedirs(the_path):
+    if not path.exists(the_path):
+        os_makedirs(the_path)
+###############################################################################
+
+
+###############################################################################
 class GridManager(object):
     
     def __init__(self, starlight_dir, decomp_file, decomp_id, run_id, galaxy_id, spec_type='f_obs'):
         self.specType = spec_type
         self.starlightDir = starlight_dir
-        self.basesDir = 'BasesDir'
-        self.obsDir = 'input'
-        self.obsDir_fullpath = path.join(self.starlightDir, self.obsDir)
-        self.outDir = 'output'
-        self.maskDir = '.'
-        self.etcDir = '.'
         self.galaxyId = galaxy_id
         self.decompId = decomp_id
         self.runId = run_id
@@ -52,8 +53,38 @@ class GridManager(object):
         self.f_disk__lz = self._getZoneSpectra(grp.f_disk__lz, grp.i_f_disk__l)
 
         f.close()
+        self._gridTemplate, self._runTemplate = self._getTemplates()
+        self._createDirs()
+
+        
+    def _getTemplates(self):
+        template_path = path.join(self.starlightDir, 'grid.template.in')
+        grid = GridFile.fromFile(self.starlightDir, template_path)
+        grid.setLogDir('log') 
+        grid.fluxUnit = self.flux_unit
+        run = grid.runs.pop()
+        grid.clearRuns()
+        return grid, run
 
     
+    def _createDirs(self):
+        obs_dir = path.normpath(self._gridTemplate.obsDirAbs)
+        out_dir = path.normpath(self._gridTemplate.outDirAbs)
+        log_dir = path.normpath(self._gridTemplate.logDirAbs)
+
+        makedirs(obs_dir + '_bulge')
+        makedirs(obs_dir + '_disk')
+        makedirs(obs_dir + '_total')
+        
+        makedirs(out_dir + '_bulge')
+        makedirs(out_dir + '_disk')
+        makedirs(out_dir + '_total')
+        
+        makedirs(log_dir + '_bulge')
+        makedirs(log_dir + '_disk')
+        makedirs(log_dir + '_total')
+        
+        
     def _getZoneSpectra(self, grp, igrp):
         shape = (self.Nl_obs, self.N_zone)
         dtype = np.dtype([('f_obs', 'float64'), ('f_syn', 'float64'), ('f_err', 'float64'), ('f_flag', 'float64')])
@@ -69,49 +100,44 @@ class GridManager(object):
         return zspec
         
         
-    def _getGrid(self, zone1, zone2):
-        grid = GridFile()
-        grid_template_file = path.join(self.starlightDir, 'grid.template.in')
-        grid.loadFrom(grid_template_file)
+    def _getGrid(self, component, spectra, zone1, zone2):
+        grid = self._gridTemplate.copy()
         if zone1 != zone2:
             grid.name = 'grid_%04d-%04d' % (zone1, zone2)
         else:
             grid.name = 'grid_%04d' % zone1
-        grid.starlightDir = self.starlightDir
+        grid.setObsDir(grid.obsDir + '_%s' % component)
+        grid.setOutDir(grid.outDir + '_%s' % component)
+        grid.setLogDir(grid.logDir + '_%s' % component)
         grid.randPhone = -958089828
         # grid.seed()
-        grid.basesDir = self.basesDir + path.sep
-        grid.obsDir = self.obsDir + path.sep
-        grid.maskDir = self.maskDir + path.sep
-        grid.etcDir = self.etcDir + path.sep
-        grid.outDir = self.outDir + path.sep
-        grid.fluxUnit = self.flux_unit
-        run_template = grid.runs.pop()
         
         for z in xrange(zone1, zone2):
             if z >= self.N_zone:
                 break
-            print 'Creating inputs for zone %d' % z
-            grid.runs.append(self._createRun(z, 'total', self.f__lz, run_template))
-            grid.runs.append(self._createRun(z, 'bulge', self.f_bulge__lz, run_template))
-            grid.runs.append(self._createRun(z, 'disk', self.f_disk__lz, run_template))
+            print 'Creating inputs for %s, zone %d' % (component, z)
+            grid.runs.append(self._createRun(component, spectra, z, grid.obsDirAbs))
         return grid
 
 
-    def _createRun(self, z, suffix, spectra, run_template):
-        new_run = GridRun.sameAs(run_template)
-        new_run.inFile = '%s_%04d_%s.%s.%s.in' % (self.galaxyId, z, self.runId, self.specType, suffix)
-        new_run.outFile = '%s_%04d_%s.%s.%s.out' % (self.galaxyId, z, self.runId, self.specType, suffix)
+    def _createRun(self, component, spectra, z, obs_dir):
+        new_run = self._runTemplate.copy()
+        new_run.inFile = '%s_%04d_%s.%s.%s.in' % (self.galaxyId, z, self.runId, self.specType, component)
+        new_run.outFile = '%s_%04d_%s.%s.%s.out' % (self.galaxyId, z, self.runId, self.specType, component)
         new_run.lumDistanceMpc = self.distance_Mpc
         write_table(self.l_obs, spectra[:, z][self.specType],
                     spectra[:, z]['f_err'], spectra[:, z]['f_flag'],
-                    path.join(self.obsDir_fullpath, new_run.inFile))
+                    path.join(obs_dir, new_run.inFile))
         return new_run
 
 
-    def getGrids(self, chunk_size):
+    def gridIterator(self, chunk_size):
         for z in xrange(0, self.N_zone, chunk_size):
-            yield self._getGrid(z, z + chunk_size)
+            yield self._getGrid('bulge', self.f__lz, z, z + chunk_size)
+        for z in xrange(0, self.N_zone, chunk_size):
+            yield self._getGrid('disk', self.f__lz, z, z + chunk_size)
+        for z in xrange(0, self.N_zone, chunk_size):
+            yield self._getGrid('total', self.f__lz, z, z + chunk_size)
 
 ###############################################################################
 
@@ -147,8 +173,8 @@ print 'Loading grid manager.'
 gm = GridManager(args.starlightDir, args.db, args.decompId, run_id, galaxy_id, spec_type=args.spectraType)
 print 'Number of zones: %d' % gm.N_zone
 print 'Starting starlight runner.'
-runner = sr.StarlightRunner(n_workers=nproc, timeout=args.timeout * 60.0)
-for grid in gm.getGrids(chunk_size=args.chunkSize):
+runner = sr.StarlightRunner(n_workers=nproc, timeout=args.timeout * 60.0, compress=True)
+for grid in gm.gridIterator(chunk_size=args.chunkSize):
     print 'Dispatching grid.'
     runner.addGrid(grid)
 
