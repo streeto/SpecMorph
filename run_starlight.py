@@ -116,11 +116,18 @@ class GridManager(object):
             if z >= self.N_zone:
                 break
             print 'Creating inputs for %s, zone %d' % (component, z)
-            grid.runs.append(self._createRun(component, spectra, z, grid.obsDirAbs))
+            run = self._createRun(component, spectra, z, grid.obsDirAbs)
+            if run is not None:
+                grid.runs.append(run)
+            else:
+                print 'Skipping zone %d of %s' % (z, component)
         return grid
 
 
     def _createRun(self, component, spectra, z, obs_dir):
+        n_good = (spectra[:, z]['f_flag'] == 0.0).sum()
+        if n_good <= 400:
+            return None
         new_run = self._runTemplate.copy()
         new_run.inFile = '%s_%04d_%s.%s.%s.in' % (self.galaxyId, z, self.runId, self.specType, component)
         new_run.outFile = '%s_%04d_%s.%s.%s.out' % (self.galaxyId, z, self.runId, self.specType, component)
