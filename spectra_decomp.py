@@ -119,11 +119,11 @@ def smooth_param_polynomial(param, param_l_obs, param_flags, l_obs, degree=1):
     line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
     param_fitted = fit(line, param_l_obs[flag_ok], param[flag_ok])
-    import matplotlib.pyplot as plt
-    plt.ioff()
-    plt.plot(param_l_obs[flag_ok], param[flag_ok], 'ok')
-    plt.plot(l_obs, param_fitted(l_obs), '-r')
-    plt.show()
+#     import matplotlib.pyplot as plt
+#     plt.ioff()
+#     plt.plot(param_l_obs[flag_ok], param[flag_ok], 'ok')
+#     plt.plot(l_obs, param_fitted(l_obs), '-r')
+#     plt.show()
     return param_fitted(l_obs)
 ################################################################################
 

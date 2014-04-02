@@ -12,6 +12,7 @@ import numpy as np
 
 from .model import GalaxyModel
 import collections
+import time
 
 
 __all__ = ['BulgeDiskDecomposition']
@@ -93,6 +94,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def _guessInitialModel(self):
+        t1 = time.time()
         mask = ~self.qMask
         qSignal = np.ma.array(self.qSignal, mask=mask)
         qNoise = np.ma.array(self.qNoise, mask=mask)
@@ -113,6 +115,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         imfit.fit(qSignal, qNoise, mode='DE')
         guess_model = imfit.getModelDescription()
         logger.debug('Refined initial model:\n%s\n' % guess_model)
+        logger.debug('Total time: %.2f\n' % (time.time() - t1))
         return guess_model
 
 
