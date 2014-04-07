@@ -309,6 +309,9 @@ except:
 if args.overwrite and 'fit_parameters' in grp:
     grp.fit_parameters._f_remove()
 
+if args.overwrite and 'first_pass_parameters' in grp:
+    grp.first_pass_parameters._f_remove()
+
 t = db.createTable(grp, 'fit_parameters', fit_params.dtype, 'Morphology fit parameters', Filters(1, 'blosc'),
               expectedrows=len(fit_params))
 t.attrs.FWHM = args.psfFWHM
