@@ -140,9 +140,9 @@ class GridManager(object):
 
     def gridIterator(self, chunk_size):
         for z in xrange(0, self.N_zone, chunk_size):
-            yield self._getGrid('bulge', self.f__lz, z, z + chunk_size)
+            yield self._getGrid('bulge', self.f_bulge__lz, z, z + chunk_size)
         for z in xrange(0, self.N_zone, chunk_size):
-            yield self._getGrid('disk', self.f__lz, z, z + chunk_size)
+            yield self._getGrid('disk', self.f_disk__lz, z, z + chunk_size)
         for z in xrange(0, self.N_zone, chunk_size):
             yield self._getGrid('total', self.f__lz, z, z + chunk_size)
 
