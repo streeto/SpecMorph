@@ -114,7 +114,7 @@ def smooth_param_box(param, flags, radius):
 
 ################################################################################
 def smooth_param_polynomial(param, param_l_obs, param_flags, l_obs, degree=1):
-    flag_ok = (param_flags == 0)
+    flag_ok = (param_flags == 0) & (param_l_obs > 4500.0)
     from astropy.modeling import models, fitting
     line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
