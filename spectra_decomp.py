@@ -61,7 +61,8 @@ def save_qbick_planes(planes, K, filename):
     for key in phdu.header.keys():
         if key.startswith('SYN'):
             phdu.header.remove(key)
-    hdulist = pyfits.HDUList([phdu])
+    hdulist = pyfits.HDUList()
+    hdulist.append(phdu)
     hdulist.writeto(filename, clobber=True)
 ################################################################################
 
