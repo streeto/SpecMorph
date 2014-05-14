@@ -21,8 +21,9 @@ FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
 
 ################################################################################
 class BulgeDiskDecomposition(fitsQ3DataCube):
+    vdPercentile = 95.0
 
-    def __init__(self, synthesisFile, smooth=True, target_vd=0.0,
+    def __init__(self, synthesisFile, smooth=True, target_vd=None,
                  PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=-1):
         self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
@@ -38,6 +39,11 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def _calcRestFrameSpectra(self, target_vd):
+        if target_vd is None:
+            target_vd = np.percentile(self.K.v_d, self.vdPercentile)
+        self.target_vd = target_vd
+        logger.info('Target v_d = %f' % self.target_vd)
+        
         from pystarlight.util.velocity_fix import SpectraVelocityFixer
         fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
         logger.debug('Computing rest frame spectra from scratch...')
