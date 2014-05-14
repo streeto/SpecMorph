@@ -213,7 +213,7 @@ if not args.multipass:
     logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 else:
     t1 = time.time()
-    models = decomp.fitSpectra(step=50, box_radius=50, mode='NM')
+    models = decomp.fitSpectra(step=50*args.boxStep, box_radius=50*args.boxStep, mode='NM')
     first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
 
