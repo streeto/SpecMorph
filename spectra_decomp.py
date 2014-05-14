@@ -175,6 +175,8 @@ parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
                     help='Spectral running average box radius.')
 parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
                     help='Spectral running average box step.')
+parser.add_argument('--vd', dest='vd', type=float, default=None,
+                    help='Target v_d in km/s.')
 parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=3.6,
                     help='PSF FWHM in arcseconds.')
 parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=-1,
@@ -203,7 +205,7 @@ if args.verbose:
 dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 logger.info('Starting fit for %s...' % galaxyId)
-decomp = BulgeDiskDecomposition(dbfile, target_vd=None, use_fobs=not args.useFsyn,
+decomp = BulgeDiskDecomposition(dbfile, target_vd=args.vd, use_fobs=not args.useFsyn,
                                 PSF_FWHM=args.psfFWHM, PSF_beta=args.psfBeta, PSF_size=args.psfSize,
                                 nproc=args.nproc)
 
