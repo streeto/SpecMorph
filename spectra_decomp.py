@@ -113,18 +113,41 @@ def smooth_param_box(param, flags, radius):
 
 
 ################################################################################
-def smooth_param_polynomial(param, param_l_obs, param_flags, l_obs, degree=1):
-    flag_ok = (param_flags == 0) & (param_l_obs > 4500.0)
+def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
+    flag_ok = (flags == 0) & (wl > 4500.0)
     from astropy.modeling import models, fitting
     line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
-    param_fitted = fit(line, param_l_obs[flag_ok], param[flag_ok])
-#     import matplotlib.pyplot as plt
-#     plt.ioff()
-#     plt.plot(param_l_obs[flag_ok], param[flag_ok], 'ok')
-#     plt.plot(l_obs, param_fitted(l_obs), '-r')
-#     plt.show()
+    param_fitted = fit(line, wl[flag_ok], param[flag_ok])
     return param_fitted(l_obs)
+################################################################################
+
+
+################################################################################
+def smooth_models(models, wl):
+    params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+    smooth_params = np.empty(len(wl), dtype=params[0].dtype)    
+    param_wl = params['wl']
+    param_flag = params['flag']
+
+    for p in params.dtype.names:
+        if p in ['wl', 'flag', 'chi2', 'n_pix']: continue
+        smooth_params[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree=1)
+    
+    models = []
+    for i in xrange(len(smooth_params)):
+        m = GalaxyModel.fromParamVector(smooth_params[i])
+        m.x0.fixed=True
+        m.y0.fixed=True
+        m.bulge.r_e.fixed=True
+        m.bulge.n.fixed=True
+        m.bulge.PA.fixed=True
+        m.bulge.ell.fixed=True
+        m.disk.h.fixed=True
+        m.disk.PA.fixed=True
+        m.disk.ell.fixed=True
+        models.append(m)
+    return models
 ################################################################################
 
 
@@ -145,6 +168,8 @@ parser.add_argument('--zone-file-dir', dest='zoneFileDir', default='data/planes'
                     help='Output HDF5 database path.')
 parser.add_argument('--verbose', dest='verbose', action='store_true',
                     help='Enable verbose output.')
+parser.add_argument('--use-fsyn', dest='useFsyn', action='store_true',
+                    help='Use synthetic spectra instead of observed.')
 parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
                     help='Spectral running average box radius.')
 parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
@@ -177,83 +202,61 @@ if args.verbose:
 dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 logger.info('Starting fit for %s...' % galaxyId)
-decomp = BulgeDiskDecomposition(dbfile, target_vd=300.0,
+decomp = BulgeDiskDecomposition(dbfile, target_vd=None, use_fobs=not args.useFsyn,
                                 PSF_FWHM=args.psfFWHM, PSF_beta=args.psfBeta, PSF_size=args.psfSize,
                                 nproc=args.nproc)
 
 if not args.multipass:
     t1 = time.time()
-    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
+    models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius)
     logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 else:
     t1 = time.time()
-    models, fit_l_ix = decomp.fitSpectra(step=50, box_radius=50, mode='NM')
+    models = decomp.fitSpectra(step=50, box_radius=50, mode='NM')
+    first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
+
     t1 = time.time()
     logger.info('Smoothing parameters.')
-    
-    first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-    initial_params = np.empty(len(decomp.l_obs), dtype=first_pass_params.dtype)
-
-    flags = first_pass_params['flag']
-    first_pass_l_obs = decomp.l_obs[fit_l_ix]
-    
-    for p in first_pass_params.dtype.names:
-        if p in ['flag', 'chi2', 'n_pix']: continue
-        initial_params[p] = smooth_param_polynomial(first_pass_params[p], first_pass_l_obs, flags,
-                                                    decomp.l_obs, degree=1)
-    
-    models = []
-    for p in initial_params:
-        m = GalaxyModel.fromParamVector(p)
-        m.x0.setValue(p['x0'], fixed=True)
-        m.y0.setValue(p['y0'], fixed=True)
-        m.bulge.r_e.setValue(p['r_e'], fixed=True)
-        m.bulge.n.setValue(p['n'], fixed=True)
-        m.bulge.PA.setValue(p['PA_b'], fixed=True)
-        m.bulge.ell.setValue(p['ell_b'], fixed=True)
-        m.disk.h.setValue(p['h'], fixed=True)
-        m.disk.PA.setValue(p['PA_d'], fixed=True)
-        m.disk.ell.setValue(p['ell_d'], fixed=True)
-        models.append(m)
+    models = smooth_models(models, decomp.l_obs)
     
     logger.info('Starting second pass modeling...')
-    models, fit_l_ix = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                                         initial_model=models, mode='LM', insist=True)
+    models = decomp.fitSpectra(step=args.boxStep, box_radius=1,
+                               initial_model=models, mode='LM', insist=True)
     logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
-    
 
 t1 = time.time()
 logger.info('Computing model spectra...')
 
-f_syn_bulge__lyx, f_syn_disk__lyx = decomp.getModelSpectra(models)
+f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(models)
 
 # TODO: better array and dtype handling.
 fit_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
 
-shape__l = (len(fit_l_ix),)
-shape__lz = (len(fit_l_ix), decomp.N_zone)
-shape__lyx = (len(fit_l_ix), decomp.N_y, decomp.N_x)
+Nl_obs = decomp.getNSlices(args.boxStep)
+shape__l = (Nl_obs,)
+shape__lz = (Nl_obs, decomp.N_zone)
+shape__lyx = (Nl_obs, decomp.N_y, decomp.N_x)
 dtype = np.dtype([('f_obs', 'float64'), ('f_syn', 'float64'), ('f_err', 'float64'), ('f_flag', 'float64')])
-fit_l_obs = decomp.l_obs[fit_l_ix]
-# FIXME: only flagging fits that stepped out of bounds.
+fit_l_obs = decomp.l_obs[::args.boxStep]
 flag_bad_fit = fit_params['flag'][:, np.newaxis] > 0.0
 
-f__lz = np.empty(shape=shape__lz, dtype=dtype)
-f__lz['f_obs'] = decomp.f_obs_rest__lz[fit_l_ix]
-f__lz['f_syn'] = decomp.f_syn_rest__lz[fit_l_ix]
-f__lz['f_err'] = decomp.f_err_rest__lz[fit_l_ix]
-f__lz['f_flag'] = decomp.f_flag_rest__lz[fit_l_ix]
-
 # Zonify component fluxes and ratios.
-f_syn_bulge__lz = decomp.YXToZone(f_syn_bulge__lyx, extensive=True, surface_density=False)
-f_syn_disk__lz = decomp.YXToZone(f_syn_disk__lyx, extensive=True, surface_density=False)
-r_bulge__lz = f_syn_bulge__lz / f__lz['f_syn']
-r_disk__lz = f_syn_disk__lz / f__lz['f_syn']
+f__lz = np.empty(shape=shape__lz, dtype=dtype)
+f__lz['f_obs'] = decomp.f_obs_rest__lz[::args.boxStep]
+f__lz['f_syn'] = decomp.f_syn_rest__lz[::args.boxStep]
+f__lz['f_err'] = decomp.f_err_rest__lz[::args.boxStep]
+f__lz['f_flag'] = decomp.f_flag_rest__lz[::args.boxStep]
 
 f_bulge__lz = np.empty(shape=shape__lz, dtype=dtype)
-f_bulge__lz['f_obs'] = r_bulge__lz * f__lz['f_obs']
-f_bulge__lz['f_syn'] = f_syn_bulge__lz
+if args.useFsyn:
+    f_bulge__lz['f_syn'] = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=False)
+    r_bulge__lz = f_bulge__lz['f_syn'] / f__lz['f_syn']
+    f_bulge__lz['f_obs'] = r_bulge__lz * f__lz['f_obs']
+else:
+    f_bulge__lz['f_obs'] = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=False)
+    r_bulge__lz = f_bulge__lz['f_obs'] / f__lz['f_obs']
+    f_bulge__lz['f_syn'] = r_bulge__lz * f__lz['f_syn']
 f_bulge__lz['f_err'] = np.sqrt(r_bulge__lz) * f__lz['f_err']
 f_bulge__lz['f_flag'] = f__lz['f_flag']
 f_bulge__lz['f_flag'] += flag_big_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'])
@@ -261,8 +264,14 @@ f_bulge__lz['f_flag'] += flag_small_error(f_bulge__lz['f_obs'], f_bulge__lz['f_e
 f_bulge__lz['f_flag'] += flag_bad_fit
 
 f_disk__lz = np.empty(shape=shape__lz, dtype=dtype)
-f_disk__lz['f_obs'] = r_disk__lz * f__lz['f_obs']
-f_disk__lz['f_syn'] = f_syn_disk__lz
+if args.useFsyn:
+    f_disk__lz['f_syn'] = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
+    r_disk__lz = f_disk__lz['f_syn'] / f__lz['f_syn']
+    f_disk__lz['f_obs'] = r_disk__lz * f__lz['f_obs']
+else:
+    f_disk__lz['f_obs'] = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
+    r_disk__lz = f_disk__lz['f_obs'] / f__lz['f_obs']
+    f_disk__lz['f_syn'] = r_disk__lz * f__lz['f_syn']
 f_disk__lz['f_err'] = np.sqrt(r_disk__lz) * f__lz['f_err']
 f_disk__lz['f_flag'] = f__lz['f_flag']
 f_disk__lz['f_flag'] += flag_big_error(f_disk__lz['f_obs'], f_disk__lz['f_err'])
@@ -292,11 +301,14 @@ i_f_disk__l['f_obs'], i_f_disk__l['f_err'], i_f_disk__l['f_flag'] = integrated_s
 logger.info('Creating qbick planes...')
 l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
 total_planes = get_planes_image(fit_l_obs, f__lz, l_mask, decomp)
-save_qbick_planes(total_planes, decomp, path.join(args.zoneFileDir, '%s_%s_%s-total-planes.fits' % (galaxyId, runId, args.decompId)))
+save_qbick_planes(total_planes, decomp,
+                  path.join(args.zoneFileDir, '%s_%s_%s-total-planes.fits' % (galaxyId, runId, args.decompId)))
 bulge_planes = get_planes_image(fit_l_obs, f_bulge__lz, l_mask, decomp)
-save_qbick_planes(bulge_planes, decomp, path.join(args.zoneFileDir, '%s_%s_%s-bulge-planes.fits' % (galaxyId, runId, args.decompId)))
+save_qbick_planes(bulge_planes, decomp,
+                  path.join(args.zoneFileDir, '%s_%s_%s-bulge-planes.fits' % (galaxyId, runId, args.decompId)))
 disk_planes = get_planes_image(fit_l_obs, f_disk__lz, l_mask, decomp)
-save_qbick_planes(disk_planes, decomp, path.join(args.zoneFileDir, '%s_%s_%s-disk-planes.fits' % (galaxyId, runId, args.decompId)))
+save_qbick_planes(disk_planes, decomp,
+                  path.join(args.zoneFileDir, '%s_%s_%s-disk-planes.fits' % (galaxyId, runId, args.decompId)))
 
 
 logger.info('Saving to storage...')
@@ -308,9 +320,6 @@ except:
     
 if args.overwrite and 'fit_parameters' in grp:
     grp.fit_parameters._f_remove()
-
-if args.overwrite and 'first_pass_parameters' in grp:
-    grp.first_pass_parameters._f_remove()
 
 t = db.createTable(grp, 'fit_parameters', fit_params.dtype, 'Morphology fit parameters', Filters(1, 'blosc'),
               expectedrows=len(fit_params))
@@ -326,15 +335,19 @@ t.attrs.flux_unit = decomp.flux_unit
 t.attrs.distance_Mpc = decomp.distance_Mpc
 t.attrs.x0 = decomp.x0
 t.attrs.y0 = decomp.y0
+t.attrs.use_fsyn = args.useFsyn
+t.attrs.target_vd = decomp.target_vd
 t.append(fit_params)
 t.flush()
 
+if args.overwrite and 'first_pass_parameters' in grp:
+    grp.first_pass_parameters._f_remove()
+
 if args.multipass:
-    t = db.createTable(grp, 'first_pass_parameters', fit_params.dtype, 'Morphology fisrt pass fit parameters', Filters(1, 'blosc'),
+    t = db.createTable(grp, 'first_pass_parameters', fit_params.dtype, 'Morphology first pass fit parameters', Filters(1, 'blosc'),
               expectedrows=len(first_pass_params))
     t.append(first_pass_params)
     t.flush()
-    save_array(db, grp, 'first_pass_l_obs', first_pass_l_obs, args.overwrite)
 
 save_array(db, grp, 'qMask', decomp.qMask, args.overwrite)
 save_array(db, grp, 'qSignal', decomp.qSignal, args.overwrite)
@@ -344,8 +357,6 @@ save_compound_array(db, grp, 'qbick_planes', total_planes, args.overwrite)
 save_compound_array(db, grp, 'qbick_planes_bulge', bulge_planes, args.overwrite)
 save_compound_array(db, grp, 'qbick_planes_disk', disk_planes, args.overwrite)
 
-save_array(db, grp, 'l_obs', fit_l_obs, args.overwrite)
-
 save_compound_array(db, grp, 'f__lz', f__lz, args.overwrite)
 save_compound_array(db, grp, 'f_bulge__lz', f_bulge__lz, args.overwrite)
 save_compound_array(db, grp, 'f_disk__lz', f_disk__lz, args.overwrite)
@@ -354,9 +365,10 @@ save_compound_array(db, grp, 'i_f__l', i_f__l, args.overwrite)
 save_compound_array(db, grp, 'i_f_bulge__l', i_f_bulge__l, args.overwrite)
 save_compound_array(db, grp, 'i_f_disk__l', i_f_disk__l, args.overwrite)
 
-save_array(db, grp, 'f_syn__lyx', decomp.f_syn_rest__lyx, args.overwrite)
-save_array(db, grp, 'f_syn_bulge__lyx', f_syn_bulge__lyx, args.overwrite)
-save_array(db, grp, 'f_syn_disk__lyx', f_syn_disk__lyx, args.overwrite)
+save_array(db, grp, 'f_syn__lyx', decomp.f_syn_rest__lyx[::args.boxStep], args.overwrite)
+save_array(db, grp, 'f_obs__lyx', decomp.f_obs_rest__lyx[::args.boxStep], args.overwrite)
+save_array(db, grp, 'f_bulge__lyx', f_bulge__lyx, args.overwrite)
+save_array(db, grp, 'f_disk__lyx', f_disk__lyx, args.overwrite)
 
 db.close()
 

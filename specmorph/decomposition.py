@@ -8,11 +8,12 @@ from pycasso import fitsQ3DataCube
 from pycasso.util import logger
 from imfit import Imfit, moffat_psf, gaussian_psf
 
+import collections
+import time
+from os import path, unlink
 import numpy as np
 
 from .model import GalaxyModel
-import collections
-import time
 
 
 __all__ = ['BulgeDiskDecomposition']
@@ -21,11 +22,13 @@ FWHM_to_sigma_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
 
 ################################################################################
 class BulgeDiskDecomposition(fitsQ3DataCube):
+    minNPix = 1000
     vdPercentile = 95.0
 
-    def __init__(self, synthesisFile, smooth=True, target_vd=None,
+    def __init__(self, synthesisFile, smooth=True, use_fobs=True, target_vd=None,
                  PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=-1):
         self._nproc = nproc
+        self._useFobs = use_fobs
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._synthesisFile = synthesisFile
         self._calcRestFrameSpectra(target_vd)
@@ -64,14 +67,20 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         if (l1 == l2) or (l2 is None):
             wl = self.l_obs[l1]
             flag = self.f_flag_rest__lyx[l1] > 0
-            f = self.f_syn_rest__lyx[l1] / self.flux_unit
+            if self._useFobs:
+                f = self.f_obs_rest__lyx[l1] / self.flux_unit
+            else:
+                f = self.f_syn_rest__lyx[l1] / self.flux_unit
             noise = self.f_err_rest__lyx[l1] / self.flux_unit
         else:
             wl = np.mean(self.l_obs[l1:l2])
             flag__l = self.f_flag_rest__lyx[l1:l2] > 0
             n_lambda = flag__l.shape[0]
             flag = flag__l.sum(axis=0) > (flag_ratio_threshold * n_lambda)
-            f = self.f_syn_rest__lyx[l1:l2] / self.flux_unit
+            if self._useFobs:
+                f = self.f_obs_rest__lyx[l1:l2] / self.flux_unit
+            else:
+                f = self.f_syn_rest__lyx[l1:l2] / self.flux_unit
             f[flag__l] = np.ma.masked
             f = np.median(f, axis=0)
             noise = self.f_err_rest__lyx[l1:l2] / self.flux_unit
@@ -86,8 +95,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         return f, noise, wl
 
 
-    def specSlicer(self, selected_wl_ix, box_radius):
-        for wl_ix in selected_wl_ix:
+    def specSlicer(self, step, box_radius):
+        for wl_ix in np.arange(0, self.Nl_obs, step):
             yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
     
     
@@ -115,42 +124,46 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         pa = pa * 180.0 / np.pi
         if pa < 0.0:
             pa += 180.0
-        guess_model = GalaxyModel(x0=self.x0, y0=self.y0,
                                   I_e=qSignal.max(), r_e=self.HLR_pix, n=3, PA_b=pa, ell_b=ell,
                                   I_0=qSignal.max(), h=self.HLR_pix, PA_d=pa, ell_d=ell)
+        guess_model = GalaxyModel(wl=5635.0, x0=self.x0, y0=self.y0,
         logger.debug('Initial model:\n%s\n' % guess_model)
         # Fit qSignal to find the first guess.
         imfit = Imfit(guess_model, self._PSF, quiet=False, nproc=self._nproc)
         imfit.fit(qSignal, qNoise, mode='DE')
         guess_model = imfit.getModelDescription()
         logger.debug('Refined initial model:\n%s\n' % guess_model)
-        logger.debug('Total time: %.2f\n' % (time.time() - t1))
+        logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
+        with open(model_file, 'w') as f:
+            logger.debug('Saving model config %s.' % model_file)
+            f.write(str(guess_model))
         return guess_model
 
 
-    def _getInitialModelIterator(self, initial_model, selected_wl_ix):
-        N_slices = len(selected_wl_ix)
+    def _getInitialModelIterator(self, initial_model, step):
         if initial_model is None:
             initial_model = self._guessInitialModel()
 
         if isinstance(initial_model, collections.Iterable):
-            if len(initial_model) == N_slices:
-                return iter(initial_model)
-            elif len(initial_model) != self.Nl_obs:
-                return iter(initial_model[i] for i in selected_wl_ix)
-            else:
-                raise ValueError('Wrong length of initial_model list.')
+            return iter(initial_model[::step])
         else:
             def constant_model(model):
-                for _ in xrange(N_slices):
+                for _ in xrange(self.getNSlices(step)):
                     yield model
             return constant_model(initial_model)
+    
+    
+    def getNSlices(self, step):
+        n = int(self.Nl_obs / step)
+        if self.Nl_obs % step > 0:
+            n += 1
+        return n
     
     
     def _fit(self, flux, noise, model, mode='LM', insist=False):
         N_pix = (~flux.mask).sum()
         imfit = Imfit(model, self._PSF, quiet=True, nproc=self._nproc)
-        if N_pix > 1000:
+        if N_pix > self.minNPix:
             imfit.fit(flux, noise, mode=mode)
             logger.debug('Valid pix: %d | Iterations: %d | pegged: %d | chi2: %f' % \
                          (imfit.nValidPixels, imfit.nIter, imfit.nPegged, imfit.chi2))
@@ -180,16 +193,16 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
 
 
     def fitSpectra(self, step=1, box_radius=0, initial_model=None, mode='LM', insist=False):
-        selected_wl_ix = np.arange(0, self.Nl_obs, step)
-        initial_model = self._getInitialModelIterator(initial_model, selected_wl_ix)
-        slices = self.specSlicer(selected_wl_ix, box_radius)
+        initial_model = self._getInitialModelIterator(initial_model, step)
+        slices = self.specSlicer(step, box_radius)
         models = []
         for flux, noise, wl in slices:
             logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
             fitted_model = self._fit(flux, noise, initial_model.next(), mode, insist)
+            fitted_model.wl = wl
             models.append(fitted_model)
                 
-        return models, selected_wl_ix
+        return models
     
     
     def _getModelImage(self, model, PSF):

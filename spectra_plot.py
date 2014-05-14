@@ -4,11 +4,10 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-import matplotlib
 from pycasso.util import getImageDistance, radialProfile, getEllipseParams
-from matplotlib.backends.backend_pdf import PdfPages
-matplotlib.use('PDF')
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import MultipleLocator
 import numpy as np
 import tables
 import argparse
@@ -33,20 +32,23 @@ groupname = runId.replace('.', '_')
 db = tables.openFile(args.db, 'r')
 grp = db.getNode('/%s/%s/%s' % (args.decompId, groupname, galaxyId))
 t = grp.fit_parameters
-has_1p = False
 if 'first_pass_parameters' in grp:
     has_1p = True
     t_1p = grp.first_pass_parameters
-    l_obs_1p = grp.first_pass_l_obs[:]
+    l_obs_1p = t_1p.cols.wl[:]
     flag_bad_1p = t_1p.cols.flag[:] > 0.0
+else:
+    has_1p = False
 
 box_radius = t.attrs.box_radius
+target_vd = t.attrs.target_vd
+use_fsyn = t.attrs.use_fsyn
 FWHM = t.attrs.FWHM
 galaxyName = t.attrs.object_name
 flux_unit = t.attrs.flux_unit
 flag_ok = (t.cols.flag[:] == 0.0)
 flag_bad = (t.cols.flag[:] > 0.0)
-fit_l_obs = grp.l_obs[:]
+fit_l_obs = t.cols.wl[:]
 
 colnames = [
             'I_0',
@@ -113,8 +115,8 @@ func = {'I_e': log10flux,
         }
 
 plotpars = {'legend.fontsize': 8,
-            'xtick.labelsize': 8,
-            'ytick.labelsize': 8,
+            'xtick.labelsize': 10,
+            'ytick.labelsize': 10,
             'text.fontsize': 10,
             'font.family': 'Times New Roman',
 #             'figure.subplot.left': 0.08,
@@ -126,6 +128,7 @@ plotpars = {'legend.fontsize': 8,
             'image.cmap': 'GnBu',
             }
 plt.rcParams.update(plotpars)
+plt.ioff()
 
 ################################################################################
 ##########
@@ -133,10 +136,10 @@ plt.rcParams.update(plotpars)
 ##########
 ################################################################################
 pdf = PdfPages('plots/%s_%s_%s.pdf' % (galaxyId, runId, args.decompId))
-fig = plt.figure(1, figsize=(8, 8))
-plt.clf()
-fig.set_tight_layout(True)
-gs = plt.GridSpec(4, 3)
+fig = plt.figure(1, figsize=(8, 7))
+n_rows = 4
+n_cols = 3
+gs = plt.GridSpec(n_rows, n_cols)
 for i, colname in enumerate(colnames):
     if colname is None: continue
     ax = plt.subplot(gs[i])
@@ -148,7 +151,11 @@ for i, colname in enumerate(colnames):
         ax.plot(l_1p, y_1p, '.r')
     ax.plot(l, y, 'k')
     ax.set_ylabel(ylabel[colname])
-    ax.set_xlabel(r'wavelength $[\AA]$')
+    ax.xaxis.set_major_locator(MultipleLocator(1000))
+    if (i / n_cols) == (n_rows - 1):
+        ax.set_xlabel(r'wavelength $[\AA]$')
+    else:
+        ax.set_xticklabels([])
     if limits[colname] is not None:
         ymin = limits[colname][0]
         ymax = limits[colname][1]
@@ -157,8 +164,9 @@ for i, colname in enumerate(colnames):
         ymax = y.max()
     ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
     ax.set_ylim(ymin, ymax)
-plt.subplots_adjust(top=0.7)
+    ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
 plt.suptitle('%s - %s' % (galaxyName, galaxyId))
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
 
 
@@ -168,8 +176,6 @@ pdf.savefig(fig)
 ##########
 ################################################################################
 fig = plt.figure(2, figsize=(8, 6))
-plt.clf()
-# fig.set_tight_layout(True)
 gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 
 l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
@@ -178,13 +184,16 @@ l2 = l_range[-1]
 x0 = t.cols.x0[0]
 y0 = t.cols.y0[0]
 
-bulge_im = np.median(grp.f_syn_bulge__lyx[l1:l2], axis=0)
+bulge_im = np.median(grp.f_bulge__lyx[l1:l2], axis=0)
 
-disk_im = np.median(grp.f_syn_disk__lyx[l1:l2], axis=0)
+disk_im = np.median(grp.f_disk__lyx[l1:l2], axis=0)
 
-syn_im = np.median(grp.f_syn__lyx[l1:l2], axis=0)
+if use_fsyn:
+    total_im = np.median(grp.f_syn__lyx[l1:l2], axis=0)
+else:
+    total_im = np.median(grp.f_obs__lyx[l1:l2], axis=0)
 
-residual_im = (syn_im - disk_im - bulge_im)  / syn_im
+residual_im = (total_im - disk_im - bulge_im)  / total_im
 
 
 def getMinMax(image):
@@ -194,8 +203,9 @@ def getMinMax(image):
     return mean - 3 * sigma, mean + 3 * sigma
 
 
-vmin, vmax = getMinMax(np.log10(syn_im))
+vmin, vmax = getMinMax(np.log10(total_im))
 res_vmin, res_vmax = getMinMax(residual_im)
+fit_type = 'syn' if use_fsyn else 'obs'
 
 ax = plt.subplot(gs[1,0])
 im = ax.imshow(np.log10(bulge_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
@@ -212,22 +222,21 @@ ax.set_title(r'$\log F^{disk}_\lambda$')
 plt.colorbar(im, ax=ax)
 
 ax = plt.subplot(gs[2,0])
-im = ax.imshow(np.log10(syn_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
+im = ax.imshow(np.log10(total_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
 ax.set_yticks([])
 ax.set_xticks([])
-ax.set_title(r'$\log F^{syn}_\lambda$')
+ax.set_title(r'$\log F^{%s}_\lambda$' % fit_type)
 plt.colorbar(im, ax=ax)
 
 ax = plt.subplot(gs[2,1])
 im = ax.imshow(residual_im, origin='lower', interpolation='nearest', cmap='RdBu', vmin=res_vmin, vmax=res_vmax)
 ax.set_yticks([])
 ax.set_xticks([])
-ax.set_title('$(F^{syn}_\lambda - F^{bulge}_\lambda - F^{disk}_\lambda) / F^{syn}_\lambda$')
+ax.set_title('$(F^{%s}_\lambda - F^{bulge}_\lambda - F^{disk}_\lambda) / F^{%s}_\lambda$' % (fit_type, fit_type))
 plt.colorbar(im, ax=ax)
 
-plt.subplots_adjust(top=0.87)
-
 plt.suptitle(r'%s - %s | Model images @ $5635\ \AA$, PSF FWHM = $%.1f$ arcsec' % (galaxyName, galaxyId, FWHM))
+gs.tight_layout(fig, rect=[0, 0, 1, 0.9])
 pdf.savefig(fig)
 
 
@@ -238,26 +247,29 @@ pdf.savefig(fig)
 ##########
 ################################################################################
 fig = plt.figure(3, figsize=(8, 10))
-plt.clf()
-fig.set_tight_layout(True)
 gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
 l = np.ma.array(fit_l_obs, mask=flag_bad)
-f_syn = np.ma.array(grp.f_syn__lyx[:,37,37], mask=flag_bad)
-f_disk = np.ma.array(grp.f_syn_disk__lyx[:,37,37], mask=flag_bad)
-f_bulge = np.ma.array(grp.f_syn_bulge__lyx[:,37,37], mask=flag_bad)
-f_res = f_syn - f_disk - f_bulge
-vmin = min(f_syn.min(), f_disk.min(), f_bulge.min(), f_res.min())
-vmax = max(f_syn.max(), f_disk.max(), f_bulge.max(), f_res.max())
-ax.plot(l, f_syn, 'k', label='synthetic')
+if use_fsyn:
+    f_total = np.ma.array(grp.f_syn__lyx[:,37,37], mask=flag_bad)
+else:
+    f_total = np.ma.array(grp.f_obs__lyx[:,37,37], mask=flag_bad)
+f_disk = np.ma.array(grp.f_disk__lyx[:,37,37], mask=flag_bad)
+f_bulge = np.ma.array(grp.f_bulge__lyx[:,37,37], mask=flag_bad)
+f_res = f_total - f_disk - f_bulge
+vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
+vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
+ax.plot(l, f_total, 'k', label='synthetic' if use_fsyn else 'observed')
 ax.plot(l, f_disk, 'b', label='disk model')
 ax.plot(l, f_bulge, 'r', label='bulge model')
 ax.plot(l, f_res, 'm', label='residual')
 ax.vlines(fit_l_obs[flag_bad], vmin, vmax, 'gray', alpha=0.5)
-ax.set_xlabel(r'wavelength $[\AA]$')
+ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
+ax.xaxis.set_major_locator(MultipleLocator(500))
+ax.set_xticklabels([])
 ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
-ax.text(0.1, 0.9, r'%s - %s | $R\ =\ 5\ arcsec$ | $\Delta\lambda\ =\ %d\ \AA$' % (galaxyName, galaxyId, 4*box_radius+2),
+ax.text(0.1, 0.92, r'%s - %s | $R\ =\ 5\ arcsec$ | $\Delta\lambda\ =\ %d\ \AA$ | $\sigma\ =\ %.1f\, km/s$' % (galaxyName, galaxyId, 4*box_radius+2, target_vd),
         transform=ax.transAxes)
 ax.legend()
 
@@ -277,7 +289,9 @@ else:
     ymax = y.max()
 ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
 ax.set_ylim(ymin, ymax)
-ax.set_xlabel(r'wavelength $[\AA]$')
+ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
+ax.xaxis.set_major_locator(MultipleLocator(500))
+ax.set_xticklabels([])
 ax.set_ylabel(r'$\log\ I$')
 ax.legend()
 
@@ -296,9 +310,12 @@ else:
     ymax = y.max()
 ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
 ax.set_ylim(ymin, ymax)
+ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
+ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xlabel(r'wavelength $[\AA]$')
 ax.set_ylabel(r'radius $[arcsec]$')
 ax.legend()
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
 
 ################################################################################
@@ -307,21 +324,19 @@ pdf.savefig(fig)
 ##########
 ################################################################################
 fig = plt.figure(4, figsize=(8, 10))
-plt.clf()
-fig.set_tight_layout(True)
-N_col = 5
-N_row = 6
-N_cell = N_col * N_row
+N_cols = 5
+N_rows = 6
+N_cell = N_cols * N_rows
 delta_l = len(fit_l_obs) / N_cell
 l_bins = np.arange(0, len(fit_l_obs), delta_l)
-gs = plt.GridSpec(N_row, N_col)
+gs = plt.GridSpec(N_rows, N_cols)
 bin_r = np.arange(30)
 bin_c = bin_r[:-1] + 0.5
 
-for i in xrange(N_col):
-    for j in xrange(N_row):
+for i in xrange(N_cols):
+    for j in xrange(N_rows):
         ax = plt.subplot(gs[j, i])
-        cell = j * N_col + i
+        cell = j * N_cols + i
         l1 = l_bins[cell]
         if cell < N_cell:
             l2 = l_bins[cell+1]
@@ -338,28 +353,33 @@ for i in xrange(N_col):
         wl = fit_l_obs[l]
         x0 = t.cols.x0[l]
         y0 = t.cols.y0[l]
-        bulge_im = grp.f_syn_bulge__lyx[l]
-        disk_im = grp.f_syn_disk__lyx[l]
-        syn_im = grp.f_syn__lyx[l]
-        pa, ba = getEllipseParams(syn_im, x0, y0)
-        r__yx = getImageDistance(syn_im.shape, x0, y0, pa, ba)
+        bulge_im = grp.f_bulge__lyx[l]
+        disk_im = grp.f_disk__lyx[l]
+        if use_fsyn:
+            total_im = grp.f_syn__lyx[l]
+        else:
+            total_im = grp.f_obs__lyx[l]
+        mask = ~np.isnan(total_im)
+        pa, ba = getEllipseParams(total_im, x0, y0, mask=mask)
+        r__yx = getImageDistance(total_im.shape, x0, y0, pa, ba)
         bulge_r = radialProfile(bulge_im, r__yx, bin_r, rad_scale=1.0)
         disk_r = radialProfile(disk_im, r__yx, bin_r, rad_scale=1.0)
-        syn_r = radialProfile(syn_im, r__yx, bin_r, rad_scale=1.0)
-        
-        ax.plot(bin_c, np.log10(syn_r), 'k', label='synthetic')
+        total_r = radialProfile(total_im, r__yx, bin_r, rad_scale=1.0, mask=mask)
+        ax.plot(bin_c, np.log10(total_r), 'k', label='synthetic' if use_fsyn else 'observed')
         ax.plot(bin_c, np.log10(disk_r + bulge_r), 'k:', label='model')
         ax.plot(bin_c, np.log10(disk_r), 'b:', label='disk model')
         ax.plot(bin_c, np.log10(bulge_r), 'r:', label='bulge model')
         ax.text(0.5, 0.85, r'$%d\ \AA$' % wl, transform=ax.transAxes)
         ax.set_ylim(-18, -15.5)
-        if i == 0 and j == (N_row - 1):
+        ax.set_xlim(0, bin_c.max())
+        if i == 0 and j == (N_rows - 1):
             ax.set_xlabel(r'radius $[arcsec]$')
             ax.set_ylabel(r'$\log F_\lambda\ [erg / s / cm^2 / \AA]$')
         else:
             ax.set_xticklabels([])
             ax.set_yticklabels([])
 
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
 
 pdf.close()
