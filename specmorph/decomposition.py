@@ -82,7 +82,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             else:
                 f = self.f_syn_rest__lyx[l1:l2] / self.flux_unit
             f[flag__l] = np.ma.masked
-            f = np.median(f, axis=0)
+            f = np.mean(f, axis=0)
             noise = self.f_err_rest__lyx[l1:l2] / self.flux_unit
             noise[flag__l] = np.ma.masked
             noise = 1.0/np.sqrt(np.sum(noise**-2, axis=0))
