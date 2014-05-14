@@ -80,17 +80,8 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
             
         # HACK: Valid noise should not be zero, but some spectra forget about it.
         flag |= (noise == 0.0)
-        
         f[flag] = np.ma.masked
-        f.fill_value = 0.0
-
         noise[flag] = np.ma.masked
-        n_good_pix = (~f.mask).sum()
-        if n_good_pix > 0:
-            noise_fill = noise.max()
-        else:
-            noise_fill = 1.0
-        noise.fill_value = noise_fill
 
         return f, noise, wl
 
