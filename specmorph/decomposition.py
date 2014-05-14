@@ -27,6 +27,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
                  PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=-1):
         self._nproc = nproc
         fitsQ3DataCube.__init__(self, synthesisFile, smooth)
+        self._synthesisFile = synthesisFile
         self._calcRestFrameSpectra(target_vd)
         self.f_syn_rest__lyx = self.zoneToYX(self.f_syn_rest__lz, extensive=True, surface_density=False)
         self.f_obs_rest__lyx = self.zoneToYX(self.f_obs_rest__lz, extensive=True, surface_density=False)
@@ -40,7 +41,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     def _calcRestFrameSpectra(self, target_vd):
         if target_vd is None:
-            target_vd = np.percentile(self.K.v_d, self.vdPercentile)
+            target_vd = np.percentile(self.v_d, self.vdPercentile)
         self.target_vd = target_vd
         logger.info('Target v_d = %f' % self.target_vd)
         
