@@ -117,16 +117,14 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         qSignal = np.ma.array(self.qSignal, mask=mask)
         qNoise = np.ma.array(self.qNoise, mask=mask)
 
-        # TODO: get rid of these magic galactic parameters.
-        # FIXME: The guess values are irrelevant to DE fitting.
         pa, ba = self.getEllipseParams()
         ell = 1 - ba
         pa = pa * 180.0 / np.pi
         if pa < 0.0:
             pa += 180.0
-                                  I_e=qSignal.max(), r_e=self.HLR_pix, n=3, PA_b=pa, ell_b=ell,
-                                  I_0=qSignal.max(), h=self.HLR_pix, PA_d=pa, ell_d=ell)
         guess_model = GalaxyModel(wl=5635.0, x0=self.x0, y0=self.y0,
+                                  I_e=qSignal.max(), r_e=self.HLR_pix/2.0, n=3, PA_b=pa, ell_b=ell,
+                                  I_0=qSignal.max(), h=self.HLR_pix/2.0, PA_d=pa, ell_d=ell)
         logger.debug('Initial model:\n%s\n' % guess_model)
         # Fit qSignal to find the first guess.
         imfit = Imfit(guess_model, self._PSF, quiet=False, nproc=self._nproc)
