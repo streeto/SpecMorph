@@ -4,7 +4,7 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-from imfit import SimpleModelDescription, function_description
+from imfit import SimpleModelDescription, function_description, parse_config_file
 
 import numpy as np
 
@@ -61,6 +61,25 @@ class GalaxyModel(SimpleModelDescription):
                            I_0=p['I_0'], h=p['h'], PA_d=p['PA_d'], ell_d=p['ell_d'])
 
         
+    @classmethod
+    def readConfig(cls, config):
+        model = parse_config_file(config)
+        x0 = model.fs0.x0.value
+        y0 = model.fs0.y0.value
+        I_e = model.fs0.Sersic.I_e.value
+        r_e = model.fs0.Sersic.r_e.value
+        n = model.fs0.Sersic.n.value
+        PA_b = model.fs0.Sersic.PA.value
+        ell_b = model.fs0.Sersic.ell.value
+        I_0 = model.fs0.Exponential.I_0.value
+        h = model.fs0.Exponential.h.value
+        PA_d = model.fs0.Exponential.PA.value
+        ell_d = model.fs0.Exponential.ell.value
+        gmodel = cls(wl, x0, y0, I_e, r_e, n, PA_b, ell_b,
+                     I_0, h, PA_d, ell_d)
+        return gmodel
+
+
     def getBulge(self):
         model = SimpleModelDescription()
         model.x0.value = self.x0.value

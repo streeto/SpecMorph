@@ -94,6 +94,17 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     
     
     def _guessInitialModel(self):
+        model_file = self._synthesisFile + '.initmodel'
+        if path.exists(model_file):
+            try:
+                guess_model = GalaxyModel.readConfig(model_file)
+                logger.debug('Initial model found:\n%s\n' % guess_model)
+                return guess_model
+            except:
+                logger.warn('Bad model file %s. Deleting.' % model_file)
+                unlink(model_file)
+        
+        logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
         t1 = time.time()
         mask = ~self.qMask
         qSignal = np.ma.array(self.qSignal, mask=mask)
