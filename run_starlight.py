@@ -39,9 +39,9 @@ class GridManager(object):
         groupId = run_id.replace('.', '_')   
         f = tables.openFile(decomp_file)
         grp = f.getNode('/%s/%s/%s' % (decomp_id,groupId, galaxy_id))
-        self.l_obs = grp.l_obs[:]
-        
         t = grp.fit_parameters
+        
+        self.l_obs = t.cols.wl[:]
         self.flux_unit = t.attrs.flux_unit
         self.distance_Mpc = t.attrs.distance_Mpc
         
