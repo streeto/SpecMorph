@@ -23,7 +23,7 @@ def areafactor(area, M=15.0):
     return np.sqrt(M * area / (M + area - 1))
 
 
-def get_sperf_sum(sper_arr, spef_arr, nz, beta, fg=2.0):
+def get_spec_sum(spec_arr, sper_arr, spef_arr, nz, beta, fg=2.0):
     '''
     Get spectrum error of the sum of zones.
     '''
@@ -41,18 +41,18 @@ def get_sperf_sum(sper_arr, spef_arr, nz, beta, fg=2.0):
     tszflag = tzflag.sum(axis=1)
     tszflag = np.where(tszflag >= ((nz / fg) + 0.5), 1.0, 0.0)
     
-    # Sum of errors and flags
+    # Sum of spectra, errors and flags
+    spec_sum = (spec_arr * tgflag).sum(axis=1) * nz / tsgflag
     sper_sum = np.sqrt((np.power(sper_arr, 2.0) * tgflag * beta * beta).sum(axis=1) * nz / tsgflag)
     spef_sum = spef_arr.sum(axis=1) * tszflag  # Total flag * Rule "botella medio llena"
-    return sper_sum, spef_sum
+    return spec_sum, sper_sum, spef_sum
 
 
 def integrated_spec(f_obs, f_err, f_flag):
     N_zone = f_obs.shape[1]
     beta__z = areafactor(N_zone)
     # FIXME: how to sum f_obs?
-    i_f_obs = f_obs.sum(axis=1)
-    i_f_err, i_f_flag = get_sperf_sum(f_err, f_flag, N_zone, beta__z)
+    i_f_obs, i_f_err, i_f_flag = get_spec_sum(f_obs, f_err, f_flag, N_zone, beta__z)
     # Flag assignment
     i_f_flag[np.where(i_f_flag > 0)] = inf
     fber_sum = np.where(i_f_err > tbfe * abs(i_f_obs), ibe, 0.0)
