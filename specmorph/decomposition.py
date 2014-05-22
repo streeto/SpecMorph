@@ -26,10 +26,10 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
     vdPercentile = 95.0
 
     def __init__(self, synthesisFile, smooth=True, use_fobs=True, target_vd=None,
-                 PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=-1):
+                 PSF_FWHM=0.0, PSF_beta=-1, PSF_size=15, purge_cache=False, nproc=None):
+        fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._nproc = nproc
         self._useFobs = use_fobs
-        fitsQ3DataCube.__init__(self, synthesisFile, smooth)
         self._synthesisFile = synthesisFile
         self._calcRestFrameSpectra(target_vd)
         self.f_syn_rest__lyx = self.zoneToYX(self.f_syn_rest__lz, extensive=True, surface_density=False)
@@ -55,7 +55,9 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self.f_obs_rest__lz = fix_spectra(self.f_obs, target_vd)
         self.f_err_rest__lz = fix_spectra(self.f_err, target_vd)
         # flag anything that touched a flagged pixel.
-        self.f_flag_rest__lz = np.where(fix_spectra(self.f_flag, target_vd) > 0.0, 1.0, 0.0)
+        f_flag = fix_spectra(self.f_flag, target_vd, fill='constant', fill_val=1.0)
+        # Also flag negative fluxes.
+        self.f_flag_rest__lz = np.where((f_flag > 0.0) | (self.f_obs_rest__lz < 0.0), 1.0, 0.0)
     
     
     def _getSpectraSlice(self, l1, l2=None, flag_ratio_threshold=0.5):

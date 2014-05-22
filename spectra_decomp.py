@@ -185,7 +185,7 @@ parser.add_argument('--psf-size', dest='psfSize', type=int, default=15,
                     help='PSF size, in pixels. Must be an odd number.')
 parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
-parser.add_argument('--nproc', dest='nproc', type=int, default=-1,
+parser.add_argument('--nproc', dest='nproc', type=int, default=None,
                     help='Number of processors to use.')
 parser.add_argument('--multipass', dest='multipass', action='store_true',
                     help='Use multiple passes and smoothing.')
@@ -251,31 +251,38 @@ f__lz['f_syn'] = decomp.f_syn_rest__lz[::args.boxStep]
 f__lz['f_err'] = decomp.f_err_rest__lz[::args.boxStep]
 f__lz['f_flag'] = decomp.f_flag_rest__lz[::args.boxStep]
 
-f_bulge__lz = np.empty(shape=shape__lz, dtype=dtype)
+f_bulge__lz = np.zeros(shape=shape__lz, dtype=dtype)
+r_bulge__lz = np.zeros(shape=shape__lz)
 if args.useFsyn:
     f_bulge__lz['f_syn'] = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=False)
-    r_bulge__lz = f_bulge__lz['f_syn'] / f__lz['f_syn']
+    good = f__lz['f_syn'] > 0
+    r_bulge__lz[good] = f_bulge__lz['f_syn'][good] / f__lz['f_syn'][good]
     f_bulge__lz['f_obs'] = r_bulge__lz * f__lz['f_obs']
 else:
     f_bulge__lz['f_obs'] = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=False)
-    r_bulge__lz = f_bulge__lz['f_obs'] / f__lz['f_obs']
+    good = f__lz['f_obs'] > 0
+    r_bulge__lz[good] = f_bulge__lz['f_obs'][good] / f__lz['f_obs'][good]
     f_bulge__lz['f_syn'] = r_bulge__lz * f__lz['f_syn']
-f_bulge__lz['f_err'] = np.sqrt(r_bulge__lz) * f__lz['f_err']
+f_bulge__lz['f_err'][good] = np.sqrt(r_bulge__lz[good]) * f__lz['f_err'][good]
 f_bulge__lz['f_flag'] = f__lz['f_flag']
 f_bulge__lz['f_flag'] += flag_big_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'])
 f_bulge__lz['f_flag'] += flag_small_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'], f_bulge__lz['f_flag'])
 f_bulge__lz['f_flag'] += flag_bad_fit
 
-f_disk__lz = np.empty(shape=shape__lz, dtype=dtype)
+f_disk__lz = np.zeros(shape=shape__lz, dtype=dtype)
+r_disk__lz = np.zeros(shape=shape__lz)
 if args.useFsyn:
     f_disk__lz['f_syn'] = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
-    r_disk__lz = f_disk__lz['f_syn'] / f__lz['f_syn']
+    good = f__lz['f_syn'] > 0
+    r_disk__lz[good] = f_disk__lz['f_syn'][good] / f__lz['f_syn'][good]
     f_disk__lz['f_obs'] = r_disk__lz * f__lz['f_obs']
 else:
     f_disk__lz['f_obs'] = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
-    r_disk__lz = f_disk__lz['f_obs'] / f__lz['f_obs']
+    good = f__lz['f_obs'] > 0
+    r_disk__lz[good] = f_disk__lz['f_obs'][good] / f__lz['f_obs'][good]
     f_disk__lz['f_syn'] = r_disk__lz * f__lz['f_syn']
-f_disk__lz['f_err'] = np.sqrt(r_disk__lz) * f__lz['f_err']
+pos_err = r_disk__lz > 0
+f_disk__lz['f_err'][pos_err] = np.sqrt(r_disk__lz[pos_err]) * f__lz['f_err'][pos_err]
 f_disk__lz['f_flag'] = f__lz['f_flag']
 f_disk__lz['f_flag'] += flag_big_error(f_disk__lz['f_obs'], f_disk__lz['f_err'])
 f_disk__lz['f_flag'] += flag_small_error(f_disk__lz['f_obs'], f_disk__lz['f_err'], f_disk__lz['f_flag'])
