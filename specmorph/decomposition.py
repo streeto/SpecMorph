@@ -60,15 +60,17 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         self.f_flag_rest__lz = np.where((f_flag > 0.0) | (self.f_obs_rest__lz < 0.0), 1.0, 0.0)
     
     
-    def _getSpectraSlice(self, l1, l2=None, flag_ratio_threshold=0.5):
+    def _getSpectraSlice(self, l1, l2=None, masked_wl=None, flag_ratio_threshold=0.5):
         if l1 < 0:
             l1 = 0
         if l2 >= self.Nl_obs:
             l2 = self.Nl_obs - 1
-
+        if masked_wl is None:
+            masked_wl = np.zeros(self.l_obs.shape, dtype='bool')
         if (l1 == l2) or (l2 is None):
             wl = self.l_obs[l1]
             flag = self.f_flag_rest__lyx[l1] > 0
+            flag[masked_wl[l1]] = True
             if self._useFobs:
                 f = self.f_obs_rest__lyx[l1] / self.flux_unit
             else:
@@ -77,6 +79,7 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         else:
             wl = np.mean(self.l_obs[l1:l2])
             flag__l = self.f_flag_rest__lyx[l1:l2] > 0
+            flag__l[masked_wl[l1:l2]] = True
             n_lambda = flag__l.shape[0]
             flag = flag__l.sum(axis=0) > (flag_ratio_threshold * n_lambda)
             if self._useFobs:
@@ -97,9 +100,9 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         return f, noise, wl
 
 
-    def specSlicer(self, step, box_radius):
+    def specSlicer(self, step, box_radius, masked_wl):
         for wl_ix in np.arange(0, self.Nl_obs, step):
-            yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius)
+            yield self._getSpectraSlice(wl_ix - box_radius, wl_ix + box_radius, masked_wl)
     
     
     def _guessInitialModel(self):
@@ -192,9 +195,9 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         return fitted_model
 
 
-    def fitSpectra(self, step=1, box_radius=0, initial_model=None, mode='LM', insist=False):
+    def fitSpectra(self, step=1, box_radius=0, initial_model=None, mode='LM', insist=False, masked_wl=None):
         initial_model = self._getInitialModelIterator(initial_model, step)
-        slices = self.specSlicer(step, box_radius)
+        slices = self.specSlicer(step, box_radius, masked_wl=masked_wl)
         models = []
         for flux, noise, wl in slices:
             logger.debug('Fitting for wavelength: %.0f \\AA' % wl)

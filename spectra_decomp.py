@@ -8,6 +8,7 @@ from pycasso.util import logger
 from specmorph import BulgeDiskDecomposition
 from specmorph.model import GalaxyModel
 from specmorph.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
+import pystarlight.io  # @UnusedImport
 
 from tables import openFile, Filters
 import numpy as np
@@ -17,6 +18,7 @@ import argparse
 import time
 from tables.atom import Atom
 import pyfits
+import atpy
 
 
 ################################################################################
@@ -166,7 +168,9 @@ parser.add_argument('--db', dest='db', default='../cubes.200/',
 parser.add_argument('--db-out', dest='dbOutput', default='decomposition.005.h5',
                     help='Output HDF5 database path.')
 parser.add_argument('--zone-file-dir', dest='zoneFileDir', default='data/planes',
-                    help='Output HDF5 database path.')
+                    help='Output QBICK-like multiplane FITS image directory.')
+parser.add_argument('--mask-file', dest='maskFile', default='data/starlight/Mask.mE',
+                    help='Masked wavelengths while performing first pass fit.')
 parser.add_argument('--verbose', dest='verbose', action='store_true',
                     help='Enable verbose output.')
 parser.add_argument('--use-fsyn', dest='useFsyn', action='store_true',
@@ -215,7 +219,20 @@ if not args.multipass:
     logger.info('Done modeling, time: %.2f' % (time.time() - t1))
 else:
     t1 = time.time()
-    models = decomp.fitSpectra(step=50*args.boxStep, box_radius=50*args.boxStep, mode='NM')
+    if not path.exists(args.maskFile):
+        logger.error('Mask file %s not found.' % args.maskFile)
+        exit(1)
+
+    logger.info('Using mask file %s.' % args.maskFile)
+    t = atpy.Table(args.maskFile, type='starlight_mask')
+    masked_wl = np.zeros(decomp.l_obs.shape, dtype='bool')
+    for i in xrange(len(t)):
+        l_low, l_upp, line_w, line_name = t[i]
+        if line_w > 0.0: continue
+        logger.info('Masking region: %s' % line_name)
+        masked_wl |= (decomp.l_obs > l_low) & (decomp.l_obs < l_upp)
+        
+    models = decomp.fitSpectra(step=50*args.boxStep, box_radius=50*args.boxStep, mode='NM', masked_wl=masked_wl)
     first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
 
