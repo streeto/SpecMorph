@@ -59,6 +59,21 @@ def integrated_spec(f_obs, f_err, f_flag):
     sm_err = np.median(i_f_err[np.where((i_f_obs > 0.0) & (i_f_err > 0.0) & (fber_sum < 1.0) & (i_f_flag < 1.0))])
     fser_sum = np.where(i_f_err < tsfe * sm_err, ise, 0.0)  # Flag for small Errors
     i_f_flag = i_f_flag + fber_sum + fser_sum  # Total flag
+    
+    # Scale error to match the RMS of the flux.
+    good = i_f_flag<1
+    sig_rms = DerNoise1D(i_f_obs[good], masked=False)
+    noise = np.median(i_f_err[good])
+    #signal = np.median(i_f_obs[good])
+    sfactor = (sig_rms/noise)
+    
+    # normalize to S/N = 50.
+    #sfactor *= (signal / noise / 50.0)
+    
+    # Only do this of error is too small.
+    if sfactor > 1.0:
+        i_f_err *= sfactor
+    
     return i_f_obs, i_f_err, i_f_flag
 
 
@@ -118,3 +133,55 @@ def mdetrend(x,y,axis=0):
         return ret
     else:
         raise ValueError('Bad shapes: x: %s, y: %s' % (x.shape, y.shape))
+
+
+def DerNoise1D(flux, masked=False,out_signal=False):
+    '''
+    DESCRIPTION
+    
+    This function computes the signal to noise ratio DER_SNR following the
+    definition set forth by the Spectral Container Working Group of ST-ECF,
+    MAST and CADC. 
+
+        noise  = 1.482602 / sqrt(6) median(abs(2 flux_i - flux_i-2 - flux_i+2))
+        values with padded zeros are skipped
+
+    NOTES
+    
+    The DER_SNR algorithm is an unbiased estimator describing the spectrum 
+    as a whole as long as
+        * the noise is uncorrelated in wavelength bins spaced two pixels apart
+        * the noise is Normal distributed
+        * for large wavelength regions, the signal over the scale of 5 or
+        more pixels can be approximated by a straight line
+
+    For most spectra, these conditions are met.
+
+    REFERENCES
+
+    * ST-ECF Newsletter, Issue #42:
+        www.spacetelescope.org/about/further_information/newsletters/html/newsletter_42.html
+    * Software:
+        www.stecf.org/software/ASTROsoft/DER_SNR/
+
+    AUTHOR
+    
+    Felix Stoehr, ST-ECF | Adapted to masked arrays by RGB
+    '''
+    if type(flux) is np.ma.core.MaskedArray and not masked:
+        data = flux.data.copy()
+    else:
+        data = flux.copy()
+    data = np.array(data[np.where(data != 0.0)])
+    n    = len(data)
+    
+    if n>4:
+        noise = (1.482602 / np.sqrt(6)) * np.median(np.abs(2.0 * data[2:n-2] - data[0:n-4] - data[4:n]))
+    else:
+        noise = 0.0
+    if out_signal:
+        if n < 1: signal = 0.0
+        else:     signal = np.median(data)
+        return signal, noise
+    else:
+        return noise
