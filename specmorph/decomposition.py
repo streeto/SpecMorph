@@ -49,15 +49,14 @@ class BulgeDiskDecomposition(fitsQ3DataCube):
         logger.info('Target v_d = %f' % self.target_vd)
         
         from pystarlight.util.velocity_fix import SpectraVelocityFixer
-        fix_spectra = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
+        fixer = SpectraVelocityFixer(self.l_obs, self.v_0, self.v_d, self._nproc)
         logger.debug('Computing rest frame spectra from scratch...')
-        self.f_syn_rest__lz = fix_spectra(self.f_syn, target_vd)
-        self.f_obs_rest__lz = fix_spectra(self.f_obs, target_vd)
-        self.f_err_rest__lz = fix_spectra(self.f_err, target_vd)
-        # flag anything that touched a flagged pixel.
-        f_flag = fix_spectra(self.f_flag, target_vd, fill='constant', fill_val=1.0)
-        # Also flag negative fluxes.
-        self.f_flag_rest__lz = np.where((f_flag > 0.0) | (self.f_obs_rest__lz < 0.0), 1.0, 0.0)
+        self.f_syn_rest__lz = fixer.fix(self.f_syn, target_vd)
+        self.f_obs_rest__lz, self.f_err_rest__lz, flags = fixer.fixFlagged(self.f_obs,
+                                                                           self.f_err,
+                                                                           self.f_flag > 0.0,
+                                                                           target_vd)
+        self.f_flag_rest__lz = np.where(flags | (self.f_obs_rest__lz < 0.0), 1.0, 0.0)
     
     
     def _getSpectraSlice(self, l1, l2=None, masked_wl=None, flag_ratio_threshold=0.5):
