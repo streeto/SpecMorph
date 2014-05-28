@@ -27,33 +27,28 @@ def get_spec_sum(spec_arr, sper_arr, spef_arr, nz, beta, fg=2.0):
     '''
     Get spectrum error of the sum of zones.
     '''
-    # Creating flag array
-    tgflag = np.where(spef_arr > 0, 0.0 , 1.0)  # Flag good pixels (1)
-    tzflag = np.where(spef_arr > 0, 1.0, 0.0)  # Flag bad pixels  (1)
-    
-    # Number of good spectra per lambda
-    tsgflag = tgflag.sum(axis=1)
-    # If all spectra are bad at that lambda (0), replace by total number of spectra (ns)
-    _id = tsgflag < 1.0
-    tsgflag[_id] = nz
-    tgflag[_id] = 1.0
-    # tszflag = number of bad spectra per lambda --> Apply rule "botella medio llena"
-    tszflag = tzflag.sum(axis=1)
-    tszflag = np.where(tszflag >= ((nz / fg) + 0.5), 1.0, 0.0)
-    
+    spec = np.ma.masked_where(spef_arr > 0.0, spec_arr)
+    # Weight of each zone.
+    w = np.ma.median(spec, axis=0)
+    w /= w.sum()
+    completeness = ((~spec.mask).astype('float64')*w).sum(axis=1)
+    hasdata = completeness > 0.0
     # Sum of spectra, errors and flags
-    spec_sum = (spec_arr * tgflag).sum(axis=1) * nz / tsgflag
-    sper_sum = np.sqrt((np.power(sper_arr, 2.0) * tgflag * beta * beta).sum(axis=1) * nz / tsgflag)
-    spef_sum = spef_arr.sum(axis=1) * tszflag  # Total flag * Rule "botella medio llena"
-    return spec_sum, sper_sum, spef_sum
+    spec_sum = spec.sum(axis=1)
+    spec_sum[hasdata] /= completeness[hasdata]
+    sper_sum2 = (np.power(sper_arr, 2.0) * beta**2).sum(axis=1)
+    sper_sum2[hasdata] /= completeness[hasdata]
+    sper_sum = np.sqrt(sper_sum2)
+    spef_sum = np.where(spec_sum.mask, 1.0, 0.0)  # Total flag * Rule "botella medio llena"
+    spef_sum[~hasdata] = 1.0
+    return np.asarray(spec_sum), sper_sum, spef_sum
 
 
 def integrated_spec(f_obs, f_err, f_flag):
     N_zone = f_obs.shape[1]
     beta__z = areafactor(N_zone)
-    # FIXME: how to sum f_obs?
     i_f_obs, i_f_err, i_f_flag = get_spec_sum(f_obs, f_err, f_flag, N_zone, beta__z)
-    # Flag assignment
+
     i_f_flag[np.where(i_f_flag > 0)] = inf
     fber_sum = np.where(i_f_err > tbfe * abs(i_f_obs), ibe, 0.0)
     sm_err = np.median(i_f_err[np.where((i_f_obs > 0.0) & (i_f_err > 0.0) & (fber_sum < 1.0) & (i_f_flag < 1.0))])
