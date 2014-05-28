@@ -27,21 +27,37 @@ def get_spec_sum(spec_arr, sper_arr, spef_arr, nz, beta, fg=2.0):
     '''
     Get spectrum error of the sum of zones.
     '''
-    spec = np.ma.masked_where(spef_arr > 0.0, spec_arr)
-    # Weight of each zone.
+    masked = spef_arr > 0.0
+    spec = np.ma.masked_where(masked, spec_arr)
+    sper = np.ma.masked_where(masked, sper_arr)
+    
+    # Weight of each zone, used to scale the sum if some pixels are flagged.
     w = np.ma.median(spec, axis=0)
     w /= w.sum()
-    completeness = ((~spec.mask).astype('float64')*w).sum(axis=1)
-    hasdata = completeness > 0.0
-    # Sum of spectra, errors and flags
+
+    # Completeness is the estimated fraction of the light for each lambda
+    # we used in the sum of spectra. A value of 1 means all the pixels
+    # contributed to the sum (nothing flagged). A value of 0 means that all
+    # pixels were flagged.
+    completeness = ((~masked).astype('float64') * w).sum(axis=1)
+    # Botella medio llena.
+    good = completeness > 0.5
+    
+    # Sum of spectra, remember it's a masked array.
     spec_sum = spec.sum(axis=1)
-    spec_sum[hasdata] /= completeness[hasdata]
-    sper_sum2 = (np.power(sper_arr, 2.0) * beta**2).sum(axis=1)
-    sper_sum2[hasdata] /= completeness[hasdata]
+    spec_sum[good] /= completeness[good]
+    
+    # Sum of errors, assuming they are not correlated in lambda, only
+    # spatially correlated (the beta parameter, see the original QBICK.py).
+    sper_sum2 = (np.power(sper, 2.0) * beta**2).sum(axis=1)
+    sper_sum2[good] /= completeness[good]
     sper_sum = np.sqrt(sper_sum2)
-    spef_sum = np.where(spec_sum.mask, 1.0, 0.0)  # Total flag * Rule "botella medio llena"
-    spef_sum[~hasdata] = 1.0
-    return np.asarray(spec_sum), sper_sum, spef_sum
+    
+    # Flag those lambdas with light coming from too few pixels.
+    spef_sum = np.where(spec_sum.mask, 1.0, 0.0)
+    spef_sum[~good] = 1.0
+    
+    return np.asarray(spec_sum), np.asarray(sper_sum), spef_sum
 
 
 def integrated_spec(f_obs, f_err, f_flag):
