@@ -241,7 +241,7 @@ else:
     models = smooth_models(models, decomp.l_obs)
     
     logger.info('Starting second pass modeling...')
-    models = decomp.fitSpectra(step=args.boxStep, box_radius=1,
+    models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
                                initial_model=models, mode='LM', insist=True)
     logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 
