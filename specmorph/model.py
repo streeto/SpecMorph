@@ -5,10 +5,31 @@ Created on Jun 6, 2013
 '''
 
 from imfit import SimpleModelDescription, function_description, parse_config_file
+from .geometry import distance, ellipse_params, r50
 
 import numpy as np
 
-__all__ = ['GalaxyModel']
+__all__ = ['BDModel', 'bd_initial_model']
+
+################################################################################
+
+def bd_initial_model(image, x0, y0):
+    '''
+    Doc me!
+    '''
+    if x0 is None: x0 = image.shape[1] / 2
+    if y0 is None: y0 = image.shape[0] / 2
+    pa, ba = ellipse_params(image, x0, y0)
+    r = distance(image.shape, x0, y0, pa, ba)
+    r = np.ma.array(r, mask=image.mask)
+    image_r50 = r50(image, r)
+    ell = 1.0 - ba
+    pa = pa * 180.0 / np.pi
+    if pa < 0.0:
+        pa += 180.0
+    return BDModel(wl=5635.0, x0=x0, y0=y0,
+                   I_e=image.max(), r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
+                   I_0=image.max(), h=image_r50/2.0, PA_d=pa, ell_d=ell)
 
 ################################################################################
 
@@ -37,10 +58,10 @@ def disk_function(I_0, h, PA, ell):
 
 ################################################################################
 
-class GalaxyModel(SimpleModelDescription):
+class BDModel(SimpleModelDescription):
 
     def __init__(self, wl, x0, y0, I_e, r_e, n, PA_b, ell_b, I_0, h, PA_d, ell_d):
-        super(GalaxyModel, self).__init__()
+        super(BDModel, self).__init__()
         self.wl = wl
         self.x0.setValue(x0, [x0-10, x0+10])
         self.y0.setValue(y0, [y0-10, y0+10])
@@ -57,9 +78,9 @@ class GalaxyModel(SimpleModelDescription):
 
     @classmethod
     def fromParamVector(cls, p):
-        return GalaxyModel(wl=p['wl'], x0=p['x0'], y0=p['y0'],
-                           I_e=p['I_e'], r_e=p['r_e'], n=p['n'], PA_b=p['PA_b'], ell_b=p['ell_b'],
-                           I_0=p['I_0'], h=p['h'], PA_d=p['PA_d'], ell_d=p['ell_d'])
+        return BDModel(wl=p['wl'], x0=p['x0'], y0=p['y0'],
+                       I_e=p['I_e'], r_e=p['r_e'], n=p['n'], PA_b=p['PA_b'], ell_b=p['ell_b'],
+                       I_0=p['I_0'], h=p['h'], PA_d=p['PA_d'], ell_d=p['ell_d'])
 
         
     @classmethod
