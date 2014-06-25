@@ -89,11 +89,11 @@ class SyntheticSFH(object):
         self._total_M_fraction += frac
 
 
-    def sfhComponents(self):
+    def massVectorComponents(self):
         return np.array(self.individual_sfh_curves)
         
 
-    def sfh(self):
+    def massVector(self):
         sfh = np.sum(self.individual_sfh_curves, axis=0)
         return sfh/np.sum(sfh)
 
