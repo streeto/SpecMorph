@@ -66,9 +66,9 @@ def bulge_function(I_e, r_e, n, PA, ell):
     bulge = function_description('Sersic', name='bulge')
     bulge.I_e.setValue(I_e, [1e-33, 2.0*I_e])
     bulge.r_e.setValue(r_e, [1e-33, 2.0*r_e])
-    bulge.n.setValue(n, [1,5])
-    bulge.PA.setValue(PA, [-10, 190])
-    bulge.ell.setValue(ell, [0, 1])
+    bulge.n.setValue(n, [1.0,5.0])
+    bulge.PA.setValue(PA, [-1.0, 181.0])
+    bulge.ell.setValue(ell, [0.0, 1.0])
     return bulge
 
 ################################################################################
@@ -77,8 +77,8 @@ def disk_function(I_0, h, PA, ell):
     disk = function_description('Exponential', name='disk')
     disk.I_0.setValue(I_0, [1e-33, 2.0*I_0])
     disk.h.setValue(h, [1e-33, 2.0*h])
-    disk.PA.setValue(PA, [-10, 190])
-    disk.ell.setValue(ell, [0, 1])
+    disk.PA.setValue(PA, [-1.0, 181.0])
+    disk.ell.setValue(ell, [0.0, 1.0])
     return disk
 
 ################################################################################
