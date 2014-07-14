@@ -242,7 +242,7 @@ logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
 t1 = time.time()
 qSignal = np.ma.array(decomp.K.qSignal, mask=~decomp.K.qMask)
 qNoise = np.ma.array(decomp.K.qNoise, mask=~decomp.K.qMask)
-guess_model = bd_initial_model(qSignal, decomp.K.x0, decomp.K.y0)
+guess_model = bd_initial_model(qSignal, qNoise, decomp.PSF, decomp.K.x0, decomp.K.y0)
 logger.debug('Guess model:\n%s\n' % guess_model)
 initial_model = fit_image_cached(qSignal, qNoise, decomp.PSF,
                                  guess_model, mode='DE', quiet=False, nproc=args.nproc,

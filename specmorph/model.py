@@ -5,7 +5,9 @@ Created on Jun 6, 2013
 '''
 
 from imfit import SimpleModelDescription, function_description, parse_config_file
-from .geometry import distance, ellipse_params, r50
+from pycasso.util import logger
+from .geometry import ellipse_params, distance, r50
+from .fitting import fit_image
 
 import numpy as np
 
@@ -13,32 +15,57 @@ __all__ = ['BDModel', 'bd_initial_model']
 
 ################################################################################
 
-def bd_initial_model(image, x0, y0):
+def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     '''
     Doc me!
     '''
-    if x0 is None: x0 = image.shape[1] / 2
-    if y0 is None: y0 = image.shape[0] / 2
+    if x0 is None: x0 = image.shape[1] / 2.0
+    if y0 is None: y0 = image.shape[0] / 2.0
     pa, ba = ellipse_params(image, x0, y0)
-    r = distance(image.shape, x0, y0, pa, ba)
-    r = np.ma.array(r, mask=image.mask)
-    image_r50 = r50(image, r)
     ell = 1.0 - ba
     pa = pa * 180.0 / np.pi
     if pa < 0.0:
         pa += 180.0
-    return BDModel(wl=5635.0, x0=x0, y0=y0,
-                   I_e=image.max(), r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
-                   I_0=image.max(), h=image_r50/2.0, PA_d=pa, ell_d=ell)
+    r = distance(image.shape, x0, y0, pa, ba)
+    r = np.ma.array(r, mask=image.mask)
+    image_r50 = r50(image, r)
+    disk_begins = 1.5 * image_r50
+    disk_image = image.copy()
+    disk_image[r < disk_begins] = np.ma.masked
+    disk_noise = noise.copy()
+    disk_noise[r < disk_begins] = np.ma.masked
+    guess_I_0 = disk_image.max() * 2.0
+    disk_model = BDModel(wl=5635.0, x0=x0, y0=y0,
+                         I_e=0.0, r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
+                         I_0=disk_image.max(), h=disk_begins, PA_d=pa, ell_d=ell)
+    disk_model.disk.I_0.limits = (1e-33, 5* guess_I_0)
+    disk_model.bulge.I_e.fixed=True
+    disk_model.bulge.r_e.fixed=True
+    disk_model.bulge.n.fixed=True
+    disk_model.bulge.PA.fixed=True
+    disk_model.bulge.ell.fixed=True
+    logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(disk_model)))
+    fitted_model, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF, mode='NM')
+    logger.info('Disk fit - converged: %s; chi2 = %.2f; h = %.2f' % (converged, chi2, fitted_model.disk.h.value))
+    logger.debug('Fitted disk (r > %.2f):\n%s\n' % (disk_begins, str(fitted_model)))
+    bdmodel = BDModel(wl=5635.0, x0=x0, y0=y0,
+                      I_e=image.max(), r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
+                      I_0=fitted_model.disk.I_0.value, h=fitted_model.disk.h.value,
+                      PA_d=fitted_model.disk.PA.value, ell_d=fitted_model.disk.ell.value)
+    bdmodel.disk.I_0.setTolerance(0.3)
+    bdmodel.disk.h.setTolerance(0.3)
+    logger.debug('Guess model:\n%s\n' % str(bdmodel))
+    initial_model, converged, chi2 = fit_image(image, noise, bdmodel, PSF, mode='DE', quiet=False)
+    logger.info('Initial model fit - converged: %s; chi2 = %.2f' % (converged, chi2))
+    logger.debug('Initial model:\n%s\n' % str(initial_model))
+    return initial_model
 
 ################################################################################
 
 def bulge_function(I_e, r_e, n, PA, ell):
-    if I_e < 0.0: I_e = 1.0
-    if r_e < 0.0: r_e = 1.0
     bulge = function_description('Sersic', name='bulge')
-    bulge.I_e.setValue(I_e, [1e-33, 10*I_e])
-    bulge.r_e.setValue(r_e, [1e-33, 10*r_e])
+    bulge.I_e.setValue(I_e, [1e-33, 2.0*I_e])
+    bulge.r_e.setValue(r_e, [1e-33, 2.0*r_e])
     bulge.n.setValue(n, [1,5])
     bulge.PA.setValue(PA, [-10, 190])
     bulge.ell.setValue(ell, [0, 1])
@@ -47,11 +74,9 @@ def bulge_function(I_e, r_e, n, PA, ell):
 ################################################################################
 
 def disk_function(I_0, h, PA, ell):
-    if I_0 < 0.0: I_0 = 1.0
-    if h < 0.0: h = 1.0
     disk = function_description('Exponential', name='disk')
-    disk.I_0.setValue(I_0, [1e-33, 10*I_0])
-    disk.h.setValue(h, [1e-33, 10*h])
+    disk.I_0.setValue(I_0, [1e-33, 2.0*I_0])
+    disk.h.setValue(h, [1e-33, 2.0*h])
     disk.PA.setValue(PA, [-10, 190])
     disk.ell.setValue(ell, [0, 1])
     return disk
