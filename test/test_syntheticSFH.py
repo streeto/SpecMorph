@@ -7,9 +7,8 @@ Created on 30/05/2014
 
 from specmorph.components import SyntheticSFH
 from specmorph.model import BDModel, bd_initial_model
-from specmorph.fitting import fit_image
 from specmorph.decomposition import IFSDecomposer
-from specmorph.geometry import distance
+from specmorph.geometry import distance, ellipse_params
 from specmorph.util import logger, find_nearest_index
 
 from pystarlight.util.base import StarlightBase
@@ -19,6 +18,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 from os import path
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import MultipleLocator
 
 logger.setLevel(-1)
 
@@ -90,12 +91,12 @@ wl_norm_window = (base.l_ssp < 5680.0) & (base.l_ssp > 5590.0)
 
 logger.info('Computing synthetic SFH and their spectra.')
 bulge_sfh = SyntheticSFH(base.ageBase)
-bulge_sfh.addExp(14e9, 0.5e9, 1.0)
+bulge_sfh.addExp(14e9, 2.0e9, 1.0)
 bulge_flux = (base.f_ssp * bulge_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
 bulge_flux /= np.median(bulge_flux[wl_norm_window])
 
 disk_sfh = SyntheticSFH(base.ageBase)
-disk_sfh.addSquare(0.0, 5e9, 1.0)
+disk_sfh.addExp(10e9, 2.0e9, 1.0)
 disk_flux = (base.f_ssp * disk_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
 disk_flux /= np.median(disk_flux[wl_norm_window])
 
@@ -111,7 +112,7 @@ if debug:
     plt.plot(base.l_ssp, disk_flux)
     plt.show()
 
-logger.info('Creating true model.')
+logger.info('Creating true B-D model.')
 flux_unit = 1e-16
 shape = (72,77)
 x0 = 36.0
@@ -215,7 +216,327 @@ models = decomp.fitSpectra(step=1, box_radius=0, initial_model=smoothed_models, 
 fitted_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
 logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 
+logger.info('Computing model spectra.')
+fitted_bulge_spectra, fitted_disk_spectra = decomp.getModelSpectra(models)
 
 
+################################################################################
+##########
+########## Plot stuff 
+##########
+################################################################################
+
+logger.info('Plotting stuff.')
+
+colnames = [
+            'I_0',
+            'I_e',
+            'n',
+            'h',
+            'r_e',
+            'x0',
+            'PA_d',
+            'PA_b',
+            'y0',
+            'ell_d',
+            'ell_b',
+            'chi2',
+            ]
+
+limits = {'I_e': (-17, -15),
+          'r_e': (0, 20),
+          'PA_b': (0, 180),
+          'ell_b': (0.5, 1.0),
+          'I_0': (-17, -15),
+          'h': (0, 20),
+          'PA_d': (0, 180),
+          'ell_d': (0.5, 1.0),
+          'x0': None,
+          'y0': None,
+          'chi2': None,
+          'n_pix': None,
+          'n': (1,5),
+          }
+
+ylabel = {'I_e': r'$\log I_e\ [erg / s /cm^2 / \AA]$',
+          'r_e': r'$r_e\ [arcsec]$',
+          'PA_b': r'$P.A.\ [degrees]$ (bulge)',
+          'ell_b': r'$b/a$ (bulge)',
+          'I_0': r'$\log I_0\ [erg / s /cm^2 / \AA]$',
+          'h': r'$h\ [arcsec]$',
+          'PA_d': r'$P.A.\ [degrees]$ (disk)',
+          'ell_d': r'$b/a$ (disk)',
+          'x0': r'$X_{center}\ [pixel]$',
+          'y0': r'$Y_{center}\ [pixel]$',
+          'chi2': r'$\chi^2$',
+          'n_pix': r'$N_{pix}$',
+          'n': r'Sersic index $(n)$',
+          }
+
+nothing = lambda x: x
+rad_to_degrees = lambda x: x * 180.0 / np.pi
+ell_to_ba = lambda x: 1 - x
+log10flux = lambda x: np.log10(x*flux_unit)
+func = {'I_e': log10flux,
+        'r_e': nothing,
+        'PA_b': nothing,
+        'ell_b': ell_to_ba,
+        'I_0': log10flux,
+        'h': nothing,
+        'PA_d': nothing,
+        'ell_d': ell_to_ba,
+        'x0': nothing,
+        'y0': nothing,
+        'chi2': nothing,
+        'n_pix': nothing,
+        'n': nothing,
+        }
+
+plotpars = {'legend.fontsize': 8,
+            'xtick.labelsize': 10,
+            'ytick.labelsize': 10,
+            'text.fontsize': 10,
+            'font.family': 'Times New Roman',
+#             'figure.subplot.left': 0.08,
+#             'figure.subplot.bottom': 0.08,
+#             'figure.subplot.right': 0.97,
+#             'figure.subplot.top': 0.95,
+#             'figure.subplot.wspace': 0.42,
+#             'figure.subplot.hspace': 0.1,
+            'image.cmap': 'GnBu',
+            }
+plt.rcParams.update(plotpars)
+plt.ioff()
+
+################################################################################
+##########
+########## All fit parameters 
+##########
+################################################################################
+pdf = PdfPages('test.pdf')
+fig = plt.figure(1, figsize=(8, 7))
+n_rows = 4
+n_cols = 3
+gs = plt.GridSpec(n_rows, n_cols)
+true_params = np.array(true_model.getParams(), dtype=true_model.dtype)
+for i, colname in enumerate(colnames):
+    if colname is None: continue
+    ax = plt.subplot(gs[i])
+    y = func[colname](fitted_params[colname])
+    y_1p = func[colname](first_pass_params[colname])
+    ax.hlines(func[colname](true_params[colname]), decomp.wl.min(), decomp.wl.max(), linestyles=':', colors='k')
+    ax.plot(first_pass_lambdas, y_1p, '.r')
+    ax.plot(decomp.wl, y, 'k')
+    ax.set_ylabel(ylabel[colname])
+    ax.xaxis.set_major_locator(MultipleLocator(1000))
+    if (i / n_cols) == (n_rows - 1):
+        ax.set_xlabel(r'wavelength $[\AA]$')
+    else:
+        ax.set_xticklabels([])
+    if limits[colname] is not None:
+        ymin = limits[colname][0]
+        ymax = limits[colname][1]
+    else:
+        ymin = y.min()
+        ymax = y.max()
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlim(decomp.wl.min(), decomp.wl.max())
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig(fig)
+################################################################################
+##########
+########## Model images
+##########
+################################################################################
+fig = plt.figure(2, figsize=(8, 6))
+gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
+
+l_range = np.where((decomp.wl > 5590.0) & (decomp.wl < 5680.0))[0]
+l1 = l_range[0]
+l2 = l_range[-1]
+
+bulge_im = np.median(fitted_bulge_spectra[l1:l2], axis=0)
+
+disk_im = np.median(fitted_disk_spectra[l1:l2], axis=0)
+
+total_im = np.median(decomp.flux[l1:l2], axis=0)
+
+residual_im = (total_im - disk_im - bulge_im)  / total_im
+
+
+def getMinMax(image):
+    vals = np.ma.masked_invalid(image).compressed()
+    mean = vals.mean()
+    sigma = np.sqrt(vals.var())
+    return mean - 3 * sigma, mean + 3 * sigma
+
+
+vmin, vmax = getMinMax(np.log10(total_im))
+res_vmin, res_vmax = getMinMax(residual_im)
+
+ax = plt.subplot(gs[1,0])
+im = ax.imshow(np.log10(bulge_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
+ax.set_yticks([])
+ax.set_xticks([])
+ax.set_title(r'$\log F^{bulge}_\lambda$')
+plt.colorbar(im, ax=ax)
+
+ax = plt.subplot(gs[1,1])
+im = ax.imshow(np.log10(disk_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
+ax.set_yticks([])
+ax.set_xticks([])
+ax.set_title(r'$\log F^{disk}_\lambda$')
+plt.colorbar(im, ax=ax)
+
+ax = plt.subplot(gs[2,0])
+im = ax.imshow(np.log10(total_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
+ax.set_yticks([])
+ax.set_xticks([])
+ax.set_title(r'$\log F^{obs}_\lambda$')
+plt.colorbar(im, ax=ax)
+
+ax = plt.subplot(gs[2,1])
+im = ax.imshow(residual_im, origin='lower', interpolation='nearest', cmap='RdBu', vmin=res_vmin, vmax=res_vmax)
+ax.set_yticks([])
+ax.set_xticks([])
+ax.set_title('$(F^{obs}_\lambda - F^{bulge}_\lambda - F^{disk}_\lambda) / F^{obs}_\lambda$')
+plt.colorbar(im, ax=ax)
+
+gs.tight_layout(fig, rect=[0, 0, 1, 0.9])
+pdf.savefig(fig)
+
+################################################################################
+##########
+########## Fit quality
+##########
+################################################################################
+fig = plt.figure(3, figsize=(8, 10))
+gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
+
+ax = plt.subplot(gs[1])
+f_total = decomp.flux[:,37,37]
+f_disk = fitted_disk_spectra[:,37,37]
+f_disk_orig = disk_spectra[:,37,37]
+f_bulge = fitted_bulge_spectra[:,37,37]
+f_bulge_orig = bulge_spectra[:,37,37]
+f_res = f_total - f_disk - f_bulge
+vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
+vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
+ax.plot(decomp.wl, f_total, 'k', label='observed')
+ax.plot(decomp.wl, f_disk, 'b', label='disk model')
+ax.plot(decomp.wl, f_disk_orig, 'b--', label='original disk')
+ax.plot(decomp.wl, f_bulge, 'r', label='bulge model')
+ax.plot(decomp.wl, f_bulge_orig, 'r--', label='original bulge')
+ax.plot(decomp.wl, f_res, 'm', label='residual')
+ax.set_xlim(decomp.wl.min(), decomp.wl.max())
+ax.xaxis.set_major_locator(MultipleLocator(500))
+ax.set_xticklabels([])
+ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
+ax.legend()
+
+ax = plt.subplot(gs[2])
+I_e = func['I_e'](fitted_params['I_e'])
+I_0 = func['I_0'](fitted_params['I_0'])
+vmin = min(I_e.min(), I_0.min())
+vmax = max(I_e.max(), I_0.max())
+ax.plot(decomp.wl, I_0, 'b', label=r'Disk $(I_{0})$')
+ax.plot(decomp.wl, I_e, 'r', label=r'Bulge $(I_{e})$')
+if limits['I_0'] is not None:
+    ymin = limits['I_0'][0]
+    ymax = limits['I_0'][1]
+else:
+    ymin = y.min()
+    ymax = y.max()
+ax.set_ylim(ymin, ymax)
+ax.set_xlim(decomp.wl.min(), decomp.wl.max())
+ax.xaxis.set_major_locator(MultipleLocator(500))
+ax.set_xticklabels([])
+ax.set_ylabel(r'$\log\ I$')
+ax.legend()
+
+ax = plt.subplot(gs[3])
+r_e = func['r_e'](fitted_params['r_e'])
+h = func['h'](fitted_params['h'])
+vmin = min(r_e.min(), h.min())
+vmax = max(r_e.max(), h.max())
+ax.plot(decomp.wl, h, 'b', label=r'Disk $(h)$')
+ax.plot(decomp.wl, r_e, 'r', label=r'Bulge $(r_{e})$')
+if limits['r_e'] is not None:
+    ymin = limits['r_e'][0]
+    ymax = limits['r_e'][1]
+else:
+    ymin = y.min()
+    ymax = y.max()
+ax.set_ylim(ymin, ymax)
+ax.set_xlim(decomp.wl.min(), decomp.wl.max())
+ax.xaxis.set_major_locator(MultipleLocator(500))
+ax.set_xlabel(r'wavelength $[\AA]$')
+ax.set_ylabel(r'radius $[arcsec]$')
+ax.legend()
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig(fig)
+
+################################################################################
+##########
+########## Radial profiles
+##########
+################################################################################
+fig = plt.figure(4, figsize=(8, 10))
+N_cols = 5
+N_rows = 6
+N_cell = N_cols * N_rows
+delta_l = decomp.Nl_obs / N_cell
+l_bins = np.arange(0, decomp.Nl_obs, delta_l)
+gs = plt.GridSpec(N_rows, N_cols)
+bin_r = np.arange(30)
+bin_c = bin_r[:-1] + 0.5
+
+for i in xrange(N_cols):
+    for j in xrange(N_rows):
+        ax = plt.subplot(gs[j, i])
+        cell = j * N_cols + i
+        l1 = l_bins[cell]
+        if cell < N_cell:
+            l2 = l_bins[cell+1]
+        else:
+            l2 = decomp.Nl_obs - 1
+        l = l1
+        while l < l2:
+            if not fitted_params['flag'][l]:
+                break
+            l += 1
+        else:
+            print 'Only flagged stuff in the interval [%d:%d]' % (decomp.wl[l1], decomp.wl[l2])
+            l = l1
+        wl = decomp.wl[l]
+        x0 = fitted_params['x0'][l]
+        y0 = fitted_params['y0'][l]
+        bulge_im = fitted_bulge_spectra[l]
+        disk_im = fitted_disk_spectra[l]
+        total_im = decomp.flux[l]
+        mask = ~np.isnan(total_im)
+        pa, ba = ellipse_params(total_im, x0, y0)
+        r__yx = distance(total_im.shape, x0, y0, pa, ba)
+        bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
+        disk_r = radialProfile(disk_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
+        total_r = radialProfile(total_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
+        ax.plot(bin_c, np.log10(total_r), 'k', label='observed')
+        ax.plot(bin_c, np.log10(disk_r + bulge_r), 'k:', label='model')
+        ax.plot(bin_c, np.log10(disk_r), 'b:', label='disk model')
+        ax.plot(bin_c, np.log10(bulge_r), 'r:', label='bulge model')
+        ax.text(0.5, 0.85, r'$%d\ \AA$' % wl, transform=ax.transAxes)
+        ax.set_ylim(-17, -14.5)
+        ax.set_xlim(0, bin_c.max())
+        if i == 0 and j == (N_rows - 1):
+            ax.set_xlabel(r'radius $[arcsec]$')
+            ax.set_ylabel(r'$\log F_\lambda\ [erg / s / cm^2 / \AA]$')
+        else:
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig(fig)
+
+pdf.close()
 
 
