@@ -10,7 +10,7 @@ from imfit import Imfit
 __all__ = ['fit_image', 'model_image']
 
 ################################################################################
-def fit_image(flux, noise, PSF, guess_model,
+def fit_image(flux, noise, guess_model, PSF=None,
               mode='LM', insist=False, quiet=False, nproc=None):
     '''
     Doc me!

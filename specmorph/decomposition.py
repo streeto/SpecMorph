@@ -12,7 +12,7 @@ import collections
 import numpy as np
 from copy import deepcopy
 
-__all__ = ['IFSDecomposer', 'fit_image', 'model_image']
+__all__ = ['IFSDecomposer']
 
 
 ################################################################################
@@ -34,11 +34,11 @@ class IFSDecomposer(object):
         self.Nl_obs, self.N_y, self.N_x = flux.shape
         
         
-    def setSynthPSF(self, PSF_FWHM=0.0, PSF_beta=None, PSF_size=15):
-        if PSF_beta is not None:
-            self.setPSF(moffat_psf(PSF_FWHM, PSF_beta, size=PSF_size))
+    def setSynthPSF(self, FWHM=0.0, beta=None, size=15):
+        if beta is not None:
+            self.setPSF(moffat_psf(FWHM, beta, size=size))
         else:
-            self.setPSF(gaussian_psf(PSF_FWHM, size=PSF_size))
+            self.setPSF(gaussian_psf(FWHM, size=size))
 
     
     def setPSF(self, PSF):
@@ -109,7 +109,7 @@ class IFSDecomposer(object):
     def _fit(self, flux, noise, model, mode='LM', insist=False, nproc=None):
         N_pix = (~flux.mask).sum()
         if N_pix > self.minNPix:
-            fitted_model, success, chi2 = fit_image(flux, noise, self.PSF, model,
+            fitted_model, success, chi2 = fit_image(flux, noise, model, self.PSF,
                                                     mode=mode, insist=insist, quiet=True, nproc=nproc)
             fitted_model.chi2 = chi2
             fitted_model.flag = not success

@@ -35,7 +35,7 @@ def fit_image_cached(flux, noise, PSF, guess_model,
         except:
             logger.warn('Bad cache model file %s. Deleting.' % cache_model_file)
             unlink(cache_model_file)
-    guess_model = fit_image(flux, noise, PSF, mode=mode, quiet=quiet)    
+    guess_model = fit_image(flux, noise, PSF, mode=mode, quiet=quiet)
     if cache_model_file is not None:
         with open(cache_model_file, 'w') as f:
             logger.debug('Saving cache model %s.' % cache_model_file)
@@ -236,7 +236,7 @@ dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
 
 logger.info('Starting fit for %s...' % galaxyId)
 decomp = CALIFADecomposer(dbfile, use_fobs=not args.useFsyn, nproc=args.nproc)
-decomp.setSynthPSF(PSF_FWHM=args.psfFWHM, PSF_beta=args.psfBeta, PSF_size=args.psfSize)
+decomp.setSynthPSF(FWHM=args.psfFWHM, beta=args.psfBeta, size=args.psfSize)
 
 logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
 t1 = time.time()
