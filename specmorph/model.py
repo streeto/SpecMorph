@@ -4,14 +4,63 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-from imfit import SimpleModelDescription, function_description, parse_config_file
 from .geometry import ellipse_params, distance, r50
 from .fitting import fit_image, model_image
+from .util import logger
 
-from pycasso.util import logger
+from imfit import SimpleModelDescription, function_description, parse_config_file
 import numpy as np
 
 __all__ = ['BDModel', 'bd_initial_model', 'create_model_images']
+
+################################################################################
+
+def fix_PA_ell(PA, ell):
+    '''
+    Force position angle (P.A.) into (0, 180) range,
+    and ellipticity (:math:``1 - b/a``) to be positive.
+    
+    Assuming the P.A. describes the orientation of an
+    axis-symmetric object, if :math:``P.A. > 180``, then
+    :math:``P.A.' = P.A. - 180`` describes the same
+    orientation.
+    
+    When ellipticity is negative, that means the semimajor
+    and semiminor axes are swapped. In this case,
+    :math:``e_{fix} = -e / (1 - e)``, and  P.A. is rotated
+    90 degrees (keeping it in the correct range).
+    
+    Parameters
+    ----------
+    PA : float
+        Position angle in degrees.
+        
+    ell : float
+        Ellipticity.
+    
+    Returns
+    -------
+    PA : float
+        Position angle in degrees.
+    
+    ell : float
+        Ellipticity.
+    '''
+    inv_ell = lambda e: -e / (1 - e)
+
+    PA %= 360.0
+    if PA < 0.0:
+        PA + 360.0
+    elif PA > 180.0:
+        PA -= 180.0
+    
+    if ell < 0.0:
+        if PA > 90.0:
+            return PA - 90.0, inv_ell(ell)
+        else:
+            return PA + 90.0, inv_ell(ell)
+    else:
+        return PA, ell
 
 ################################################################################
 
@@ -24,12 +73,13 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     pa, ba = ellipse_params(image, x0, y0)
     ell = 1.0 - ba
     pa = pa * 180.0 / np.pi
+    pa, ell = fix_PA_ell(pa, ell)
     if pa < 0.0:
         pa += 180.0
     r = distance(image.shape, x0, y0, pa, ba)
     r = np.ma.array(r, mask=image.mask)
     image_r50 = r50(image, r)
-    disk_begins = 1.5 * image_r50
+    disk_begins = 1.0 * image_r50
     disk_image = image.copy()
     disk_image[r < disk_begins] = np.ma.masked
     disk_noise = noise.copy()
@@ -45,9 +95,13 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     disk_model.bulge.PA.fixed=True
     disk_model.bulge.ell.fixed=True
     logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(disk_model)))
-    fitted_model, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF, mode='NM')
+    fitted_model, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF, mode='DE')
+    pa, ell = fix_PA_ell(fitted_model.disk.PA.value, fitted_model.disk.ell.value)
+    fitted_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
+    fitted_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     logger.info('Disk fit - converged: %s; chi2 = %.2f; h = %.2f' % (converged, chi2, fitted_model.disk.h.value))
     logger.debug('Fitted disk (r > %.2f):\n%s\n' % (disk_begins, str(fitted_model)))
+
     bdmodel = BDModel(wl=5635.0, x0=x0, y0=y0,
                       I_e=image.max(), r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
                       I_0=fitted_model.disk.I_0.value, h=fitted_model.disk.h.value,
@@ -56,6 +110,9 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     bdmodel.disk.h.setTolerance(0.3)
     logger.debug('Guess model:\n%s\n' % str(bdmodel))
     initial_model, converged, chi2 = fit_image(image, noise, bdmodel, PSF, mode='DE', quiet=False)
+    pa, ell = fix_PA_ell(initial_model.bulge.PA.value, initial_model.bulge.ell.value)
+    initial_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
+    initial_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     logger.info('Initial model fit - converged: %s; chi2 = %.2f' % (converged, chi2))
     logger.debug('Initial model:\n%s\n' % str(initial_model))
     return initial_model
@@ -77,8 +134,8 @@ def bulge_function(I_e, r_e, n, PA, ell):
     bulge.I_e.setValue(I_e, [1e-33, 2.0*I_e])
     bulge.r_e.setValue(r_e, [1e-33, 2.0*r_e])
     bulge.n.setValue(n, [1.0,5.0])
-    bulge.PA.setValue(PA, [-1.0, 181.0])
-    bulge.ell.setValue(ell, [0.0, 1.0])
+    bulge.PA.setValue(PA, [PA - 30.0, PA + 30.0])
+    bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     return bulge
 
 ################################################################################
@@ -87,8 +144,8 @@ def disk_function(I_0, h, PA, ell):
     disk = function_description('Exponential', name='disk')
     disk.I_0.setValue(I_0, [1e-33, 2.0*I_0])
     disk.h.setValue(h, [1e-33, 2.0*h])
-    disk.PA.setValue(PA, [-1.0, 181.0])
-    disk.ell.setValue(ell, [0.0, 1.0])
+    disk.PA.setValue(PA, [PA - 30.0, PA + 30.0])
+    disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     return disk
 
 ################################################################################
