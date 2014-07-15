@@ -6,14 +6,14 @@ Created on 30/05/2014
 
 
 from specmorph.components import SyntheticSFH
-from specmorph.model import BDModel, bd_initial_model
+from specmorph.model import BDModel, bd_initial_model, create_model_images
 from specmorph.decomposition import IFSDecomposer
 from specmorph.geometry import distance, ellipse_params
 from specmorph.util import logger, find_nearest_index
 
 from pystarlight.util.base import StarlightBase
 from pycasso.util import radialProfile
-from imfit import Imfit, gaussian_psf
+from imfit import gaussian_psf
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -23,25 +23,6 @@ from matplotlib.ticker import MultipleLocator
 
 logger.setLevel(-1)
 
-################################################################################
-def create_image(shape, PSF, model):
-    imfit = Imfit(model, PSF, quiet=True)
-    image = imfit.getModelImage(shape)
-    return image
-################################################################################
-
-
-################################################################################
-def create_model_images(shape, PSF, model):
-    bulge_model = model.getBulge()
-    disk_model = model.getDisk()
-    
-    bulge = create_image(shape, PSF, bulge_model)
-    disk = create_image(shape, PSF, disk_model)
-    return bulge, disk
-################################################################################
-
-    
 ################################################################################
 def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
     flag_ok = (flags == 0) & (wl > 4500.0)
@@ -78,9 +59,36 @@ def smooth_models(models, wl):
         m.disk.ell.fixed=True
         models.append(m)
     return models
-################################################################################
     
-debug = True
+################################################################################
+##########
+########## Plot setup 
+##########
+################################################################################
+pdf = PdfPages('test.pdf')
+plotpars = {'legend.fontsize': 8,
+            'xtick.labelsize': 10,
+            'ytick.labelsize': 10,
+            'text.fontsize': 10,
+            'axes.titlesize': 12,
+            'font.family': 'Times New Roman',
+#             'figure.subplot.left': 0.08,
+#             'figure.subplot.bottom': 0.08,
+#             'figure.subplot.right': 0.97,
+#             'figure.subplot.top': 0.95,
+#             'figure.subplot.wspace': 0.42,
+#             'figure.subplot.hspace': 0.1,
+            'image.cmap': 'GnBu',
+            }
+plt.rcParams.update(plotpars)
+plt.ioff()
+
+################################################################################
+##########
+########## Population model setup
+##########
+################################################################################
+
 basedir = '../data/starlight/BasesDir'
 basefile = '../data/starlight/BASE.gsd6e'
 logger.info('Loading base %s', path.basename(basefile))
@@ -100,23 +108,44 @@ disk_sfh.addExp(10e9, 2.0e9, 1.0)
 disk_flux = (base.f_ssp * disk_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
 disk_flux /= np.median(disk_flux[wl_norm_window])
 
-if debug:
-    plt.ioff()
-    plt.plot(base.ageBase, bulge_sfh.massVector())
-    plt.plot(base.ageBase, disk_sfh.massVector())
-    plt.show()
+logger.debug('Plotting SFH.')
+fig = plt.figure(figsize=(8,6))
+gs = plt.GridSpec(2, 1, height_ratios=[1.0, 1.0])
+ax = plt.subplot(gs[0])
+age_Gyr = base.ageBase / 1e9
+ax.plot(age_Gyr, bulge_sfh.massVector(), 'r-', label='bulge')
+ax.plot(age_Gyr, disk_sfh.massVector(), 'b-', label='disk')
+ax.set_xlim(age_Gyr.min(), age_Gyr.max())
+ax.set_xlabel(r'Age [Gyr]')
+ax.set_ylabel(r'SFR (weight)')
+ax.set_title(r'Star formation history')
+ax.legend(loc='upper left')
 
-if debug:
-    plt.ioff()
-    plt.plot(base.l_ssp, bulge_flux)
-    plt.plot(base.l_ssp, disk_flux)
-    plt.show()
+ax = plt.subplot(gs[1])
+ax.plot(base.l_ssp, bulge_flux, 'r-')
+ax.plot(base.l_ssp, disk_flux, 'b-')
+ax.set_xlabel(r'Wavelength [$\AA$]')
+ax.set_ylabel(r'Relative flux')
+ax.set_title(r'Spectra')
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig()
+
+################################################################################
+##########
+########## Morphology model setup
+##########
+################################################################################
 
 logger.info('Creating true B-D model.')
 flux_unit = 1e-16
 shape = (72,77)
 x0 = 36.0
 y0 = 33.0
+I_e = 2.0
+r_e = 5.0
+n = 2.0
+I_0 = 1.0
+h = 15.0
 ba = 0.9
 ell = 1.0 - ba
 pa = 45.0
@@ -124,11 +153,16 @@ pa_rad = pa / 180 * np.pi
 flagged = distance(shape, x0, y0) > 32.0
 noise = 0.05
 
+
+
 true_model = BDModel(0, x0, y0,
-                     I_e=2, r_e=5, n=2.0, PA_b=pa, ell_b=ell,
-                     I_0=1, h=15, PA_d=pa, ell_d=ell)
+                     I_e=I_e, r_e=r_e, n=n, PA_b=pa, ell_b=ell,
+                     I_0=I_0, h=h, PA_d=pa, ell_d=ell)
+logger.info('True model (wavelength independent):\n%s\n' % str(true_model))
+
+logger.info('Creating model images.')
 PSF = gaussian_psf(2.4, size=9)
-bulge_image, disk_image = create_model_images(shape, PSF, true_model)
+bulge_image, disk_image = create_model_images(true_model, shape, PSF, flux_unit=1.0)
 bulge_image = np.ma.masked_where(flagged, bulge_image)
 disk_image = np.ma.array(disk_image, mask=flagged)
 model_image = bulge_image + disk_image
@@ -149,6 +183,54 @@ for i in xrange(shape[0]):
         tmp_noise[:, i,j] = np.random.normal(0.0, model_noise.data[i,j] * flux_unit, len(base.l_ssp))
 full_spectra += tmp_noise
 
+logger.debug('Plotting true model.')
+vmin = np.log10(model_image.min())
+vmax = np.log10(model_image.max())
+fig = plt.figure(figsize=(8, 6))
+gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
+ax = plt.subplot(gs[0,0])
+ax.imshow(np.log10(model_image), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Total')
+
+ax = plt.subplot(gs[0,1])
+ax.imshow(np.log10(bulge_image), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Bulge')
+
+ax = plt.subplot(gs[0,2])
+ax.imshow(np.log10(disk_image), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Disk')
+
+ax = plt.subplot(gs[1,:])
+bins = np.arange(0, 32)
+bins_c = bins[:-1] + 0.5
+mr = radialProfile(np.log10(model_image), bins, x0, y0, pa, ba)
+br = radialProfile(np.log10(bulge_image), bins, x0, y0, pa, ba)
+dr = radialProfile(np.log10(disk_image), bins, x0, y0, pa, ba)
+ax.plot(bins_c, mr, 'k-', label='Total')
+ax.plot(bins_c, br, 'r-', label='Bulge')
+ax.plot(bins_c, dr, 'b-', label='Disk')
+ax.set_xlabel(r'Radius [arcsec]')
+ax.set_ylabel(r'$\log$ flux (relative)')
+ax.set_xlim(0.0, 30.0)
+ax.set_ylim(-1.0, 1.0)
+ax.legend(loc='upper right')
+
+plt.suptitle(r'True model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$' % (I_e, r_e, n, I_0, h))
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig()
+
+################################################################################
+##########
+########## Decomposition 
+##########
+################################################################################
+
 logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
 decomp.setSynthPSF(FWHM=2.4, size=9)
@@ -159,45 +241,59 @@ sl1 = find_nearest_index(decomp.wl, swll)
 sl2 = find_nearest_index(decomp.wl, swlu)
 qSignal, qNoise, qWl = decomp.getSpectraSlice(sl1, sl2)
 
-if debug:
-    plt.ioff()
-    plt.clf()
-    plt.imshow(qSignal)
-    plt.colorbar()
-    plt.show()
-    
-    bins = np.arange(0, 32)
-    bins_c = bins[:-1] + 0.5
-    bulgeim, diskim = create_model_images(qSignal.shape, PSF, true_model)
-    qsr = radialProfile(np.log10(qSignal), bins, x0, y0, pa, ba)
-    br = radialProfile(np.log10(bulgeim), bins, x0, y0, pa, ba)
-    dr = radialProfile(np.log10(diskim), bins, x0, y0, pa, ba)
-    plt.ioff()
-    plt.clf()
-    plt.plot(bins_c, qsr, 'k-')
-    plt.plot(bins_c, br, 'r-')
-    plt.plot(bins_c, dr, 'b-')
-    plt.show()
-
 logger.warn('Computing initial model (takes a LOT of time).')
 t1 = time.time()
 initial_model = bd_initial_model(qSignal, qNoise, PSF, x0, y0)
+bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, PSF, flux_unit=1.0)
 logger.info('Refined initial model:\n%s\n' % initial_model)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
-if debug:
-    bins = np.arange(0, 32)
-    bins_c = bins[:-1] + 0.5
-    bulgeim, diskim = create_model_images(qSignal.shape, PSF, initial_model)
-    qsr = radialProfile(np.log10(qSignal), bins, x0, y0, pa, ba)
-    br = radialProfile(np.log10(bulgeim), bins, x0, y0, pa, ba)
-    dr = radialProfile(np.log10(diskim), bins, x0, y0, pa, ba)
-    plt.ioff()
-    plt.clf()
-    plt.plot(bins_c, qsr, 'k-')
-    plt.plot(bins_c, br, 'r-')
-    plt.plot(bins_c, dr, 'b-')
-    plt.show()
+logger.debug('Plotting guessed initial model.')
+vmin = np.log10(qSignal.min())
+vmax = np.log10(qSignal.max())
+fig = plt.figure(figsize=(8, 6))
+gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
+ax = plt.subplot(gs[0,0])
+ax.imshow(np.log10(model_image), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Total')
+
+ax = plt.subplot(gs[0,1])
+ax.imshow(np.log10(bulge_image), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Bulge')
+
+ax = plt.subplot(gs[0,2])
+ax.imshow(np.log10(disk_image), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Disk')
+
+ax = plt.subplot(gs[1,:])
+bins = np.arange(0, 32)
+bins_c = bins[:-1] + 0.5
+pa_i, ba_i = ellipse_params(qSignal, x0, y0)
+mr = radialProfile(np.log10(qSignal), bins, x0, y0, pa_i, ba_i)
+br = radialProfile(np.log10(bulge_image), bins, x0, y0, pa_i, ba_i)
+dr = radialProfile(np.log10(disk_image), bins, x0, y0, pa_i, ba_i)
+ax.plot(bins_c, mr, 'k-', label='Total')
+ax.plot(bins_c, br, 'r-', label='Bulge')
+ax.plot(bins_c, dr, 'b-', label='Disk')
+ax.set_xlabel(r'Radius [arcsec]')
+ax.set_ylabel(r'$\log$ flux (relative)')
+ax.set_xlim(0.0, 30.0)
+ax.set_ylim(-1.0, 1.0)
+ax.legend(loc='upper right')
+
+tmp = (initial_model.bulge.I_e.value,
+       initial_model.bulge.r_e.value,
+       initial_model.bulge.n.value,
+       initial_model.disk.I_0.value, initial_model.disk.h.value)
+plt.suptitle(r'Initial model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$' % tmp)
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig()
 
 logger.info('Starting first pass modeling.')
 t1 = time.time()
@@ -222,7 +318,7 @@ fitted_bulge_spectra, fitted_disk_spectra = decomp.getModelSpectra(models)
 
 ################################################################################
 ##########
-########## Plot stuff 
+########## Decomposition plots 
 ##########
 ################################################################################
 
@@ -292,29 +388,12 @@ func = {'I_e': log10flux,
         'n': nothing,
         }
 
-plotpars = {'legend.fontsize': 8,
-            'xtick.labelsize': 10,
-            'ytick.labelsize': 10,
-            'text.fontsize': 10,
-            'font.family': 'Times New Roman',
-#             'figure.subplot.left': 0.08,
-#             'figure.subplot.bottom': 0.08,
-#             'figure.subplot.right': 0.97,
-#             'figure.subplot.top': 0.95,
-#             'figure.subplot.wspace': 0.42,
-#             'figure.subplot.hspace': 0.1,
-            'image.cmap': 'GnBu',
-            }
-plt.rcParams.update(plotpars)
-plt.ioff()
-
 ################################################################################
 ##########
 ########## All fit parameters 
 ##########
 ################################################################################
-pdf = PdfPages('test.pdf')
-fig = plt.figure(1, figsize=(8, 7))
+fig = plt.figure(figsize=(8, 7))
 n_rows = 4
 n_cols = 3
 gs = plt.GridSpec(n_rows, n_cols)
@@ -343,12 +422,14 @@ for i, colname in enumerate(colnames):
     ax.set_xlim(decomp.wl.min(), decomp.wl.max())
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
+
 ################################################################################
 ##########
 ########## Model images
 ##########
 ################################################################################
-fig = plt.figure(2, figsize=(8, 6))
+
+fig = plt.figure(figsize=(8, 6))
 gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 
 l_range = np.where((decomp.wl > 5590.0) & (decomp.wl < 5680.0))[0]
@@ -410,7 +491,8 @@ pdf.savefig(fig)
 ########## Fit quality
 ##########
 ################################################################################
-fig = plt.figure(3, figsize=(8, 10))
+
+fig = plt.figure(figsize=(8, 10))
 gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
@@ -481,7 +563,8 @@ pdf.savefig(fig)
 ########## Radial profiles
 ##########
 ################################################################################
-fig = plt.figure(4, figsize=(8, 10))
+
+fig = plt.figure(figsize=(8, 10))
 N_cols = 5
 N_rows = 6
 N_cell = N_cols * N_rows

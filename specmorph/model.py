@@ -5,13 +5,13 @@ Created on Jun 6, 2013
 '''
 
 from imfit import SimpleModelDescription, function_description, parse_config_file
-from pycasso.util import logger
 from .geometry import ellipse_params, distance, r50
-from .fitting import fit_image
+from .fitting import fit_image, model_image
 
+from pycasso.util import logger
 import numpy as np
 
-__all__ = ['BDModel', 'bd_initial_model']
+__all__ = ['BDModel', 'bd_initial_model', 'create_model_images']
 
 ################################################################################
 
@@ -60,6 +60,16 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     logger.debug('Initial model:\n%s\n' % str(initial_model))
     return initial_model
 
+################################################################################
+
+def create_model_images(model, shape, PSF, flux_unit, nproc=None):
+    bulge_model = model.getBulge()
+    disk_model = model.getDisk()
+    
+    bulge = model_image(bulge_model, shape, PSF, flux_unit, nproc)
+    disk = model_image(disk_model, shape, PSF, flux_unit, nproc)
+    return bulge, disk
+    
 ################################################################################
 
 def bulge_function(I_e, r_e, n, PA, ell):
