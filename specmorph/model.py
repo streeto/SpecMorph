@@ -22,7 +22,7 @@ def fix_PA_ell(PA, ell):
     
     Assuming the P.A. describes the orientation of an
     axis-symmetric object, if :math:``P.A. > 180``, then
-    :math:``P.A.' = P.A. - 180`` describes the same
+    :math:``P.A._{fix} = P.A. - 180`` describes the same
     orientation.
     
     When ellipticity is negative, that means the semimajor
@@ -114,7 +114,7 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     initial_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
     initial_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     logger.info('Initial model fit - converged: %s; chi2 = %.2f' % (converged, chi2))
-    logger.debug('Initial model:\n%s\n' % str(initial_model))
+    logger.debug('Found initial model:\n%s\n' % str(initial_model))
     return initial_model
 
 ################################################################################

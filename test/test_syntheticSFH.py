@@ -20,8 +20,7 @@ import time
 from os import path
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MultipleLocator
-
-logger.setLevel(-1)
+import argparse
 
 ################################################################################
 def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
@@ -59,41 +58,99 @@ def smooth_models(models, wl):
         m.disk.ell.fixed=True
         models.append(m)
     return models
-    
 ################################################################################
-##########
-########## Plot setup 
-##########
-################################################################################
-pdf = PdfPages('test.pdf')
-plotpars = {'legend.fontsize': 8,
-            'xtick.labelsize': 10,
-            'ytick.labelsize': 10,
-            'text.fontsize': 10,
-            'axes.titlesize': 12,
-            'font.family': 'Times New Roman',
-#             'figure.subplot.left': 0.08,
-#             'figure.subplot.bottom': 0.08,
-#             'figure.subplot.right': 0.97,
-#             'figure.subplot.top': 0.95,
-#             'figure.subplot.wspace': 0.42,
-#             'figure.subplot.hspace': 0.1,
-            'image.cmap': 'GnBu',
-            }
-plt.rcParams.update(plotpars)
-plt.ioff()
 
+
+################################################################################
+def parse_args():
+    parser = argparse.ArgumentParser(description='Mock Bulge/Disk decomposition.')
+    
+    parser.add_argument('--model', dest='trueModel',
+                        help='File containing the morphological model of the galaxy.')
+    parser.add_argument('--base', dest='baseFile', default='BASE.gsd6e',
+                        help='File describing the starlight bases.')
+    parser.add_argument('--base-dir', dest='baseDir', default='BasesDir',
+                        help='Directory containing the base spectra.')
+    parser.add_argument('--plot', dest='plotFile', default='test.pdf',
+                        help='Plot to this file.')
+    parser.add_argument('--true-psf-fwhm', dest='truePsfFWHM', type=float, default=2.4,
+                        help='True PSF FWHM (arcseconds).')
+    parser.add_argument('--model-psf-fwhm', dest='modelPsfFWHM', type=float, default=2.4,
+                        help='PSF FWHM (arcseconds) used when modeling.')
+    
+    return parser.parse_args()
+################################################################################
+
+
+################################################################################
+def plot_setup(plot_file):
+    pdf = PdfPages(plot_file)
+    plotpars = {'legend.fontsize': 8,
+                'xtick.labelsize': 10,
+                'ytick.labelsize': 10,
+                'text.fontsize': 10,
+                'axes.titlesize': 12,
+                'font.family': 'Times New Roman',
+    #             'figure.subplot.left': 0.08,
+    #             'figure.subplot.bottom': 0.08,
+    #             'figure.subplot.right': 0.97,
+    #             'figure.subplot.top': 0.95,
+    #             'figure.subplot.wspace': 0.42,
+    #             'figure.subplot.hspace': 0.1,
+                'image.cmap': 'GnBu',
+                }
+    plt.rcParams.update(plotpars)
+    plt.ioff()
+    return pdf
+################################################################################
+
+
+################################################################################
+def default_model():
+    x0 = 36.0
+    y0 = 33.0
+    I_e = 2.0
+    r_e = 5.0
+    n = 2.0
+    I_0 = 1.0
+    h = 15.0
+    ba = 0.9
+    ell = 1.0 - ba
+    pa = 45.0
+    true_model = BDModel(0, x0, y0, 
+        I_e=I_e, r_e=r_e, n=n, PA_b=pa, ell_b=ell, 
+        I_0=I_0, h=h, PA_d=pa, ell_d=ell)
+    return true_model
+################################################################################
+
+
+################################################################################
+def get_model(model_file=None):
+    if model_file is not None:
+        try:
+            logger.info('Loading model from %s.' % model_file)
+            return BDModel.readConfig(model_file)
+        except:
+            raise Exception('Could not read model file %s.' % model_file)
+    else:
+        logger.info('Using default model.')
+        return default_model()
+################################################################################
+
+        
 ################################################################################
 ##########
 ########## Population model setup
 ##########
 ################################################################################
 
-basedir = '../data/starlight/BasesDir'
-basefile = '../data/starlight/BASE.gsd6e'
-logger.info('Loading base %s', path.basename(basefile))
+logger.setLevel(-1)
+args = parse_args()
+pdf = plot_setup(args.plotFile)
+
+logger.info('Loading base %s', path.basename(args.baseFile))
 t1 = time.clock()
-base = StarlightBase(basefile, basedir)
+base = StarlightBase(args.baseFile, args.baseDir)
 logger.info('Took %.2f seconds to read the base (%d files)' % (time.clock() - t1, base.sspfile.size))
 wl_norm_window = (base.l_ssp < 5680.0) & (base.l_ssp > 5590.0)
 
@@ -137,32 +194,21 @@ pdf.savefig()
 ################################################################################
 
 logger.info('Creating true B-D model.')
-flux_unit = 1e-16
-shape = (72,77)
-x0 = 36.0
-y0 = 33.0
-I_e = 2.0
-r_e = 5.0
-n = 2.0
-I_0 = 1.0
-h = 15.0
-ba = 0.9
-ell = 1.0 - ba
-pa = 45.0
-pa_rad = pa / 180 * np.pi
-flagged = distance(shape, x0, y0) > 32.0
-noise = 0.05
-
-
-
-true_model = BDModel(0, x0, y0,
-                     I_e=I_e, r_e=r_e, n=n, PA_b=pa, ell_b=ell,
-                     I_0=I_0, h=h, PA_d=pa, ell_d=ell)
+true_model = get_model(args.trueModel)
 logger.info('True model (wavelength independent):\n%s\n' % str(true_model))
 
+shape = (72,77)
+true_y0 = true_model.y0.value
+true_x0 = true_model.x0.value
+flagged = distance(shape, true_x0, true_y0) > 32.0
+noise = 0.05
+flux_unit = 1e-16
+
+logger.info('Creating True PSF (FWHM = %.2f)' % args.truePsfFWHM)
+true_PSF = gaussian_psf(args.truePsfFWHM, size=15)
+
 logger.info('Creating model images.')
-PSF = gaussian_psf(2.4, size=9)
-bulge_image, disk_image = create_model_images(true_model, shape, PSF, flux_unit=1.0)
+bulge_image, disk_image = create_model_images(true_model, shape, true_PSF, flux_unit=1.0)
 bulge_image = np.ma.masked_where(flagged, bulge_image)
 disk_image = np.ma.array(disk_image, mask=flagged)
 model_image = bulge_image + disk_image
@@ -209,19 +255,26 @@ ax.set_title(r'Disk')
 ax = plt.subplot(gs[1,:])
 bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
-mr = radialProfile(np.log10(model_image), bins, x0, y0, pa, ba)
-br = radialProfile(np.log10(bulge_image), bins, x0, y0, pa, ba)
-dr = radialProfile(np.log10(disk_image), bins, x0, y0, pa, ba)
+pa, ba = ellipse_params(model_image, true_x0, true_y0)
+mr = radialProfile(np.log10(model_image), bins, true_x0, true_y0, pa, ba)
+br = radialProfile(np.log10(bulge_image), bins, true_x0, true_y0, pa, ba)
+dr = radialProfile(np.log10(disk_image), bins, true_x0, true_y0, pa, ba)
 ax.plot(bins_c, mr, 'k-', label='Total')
 ax.plot(bins_c, br, 'r-', label='Bulge')
 ax.plot(bins_c, dr, 'b-', label='Disk')
 ax.set_xlabel(r'Radius [arcsec]')
 ax.set_ylabel(r'$\log$ flux (relative)')
 ax.set_xlim(0.0, 30.0)
-ax.set_ylim(-1.0, 1.0)
+ax.set_ylim(-1.0, 1.1)
 ax.legend(loc='upper right')
 
-plt.suptitle(r'True model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$' % (I_e, r_e, n, I_0, h))
+true_I_e = true_model.bulge.I_e.value
+true_r_e = true_model.bulge.r_e.value
+true_n = true_model.bulge.n.value
+true_I_0 = true_model.disk.I_0.value
+true_h = true_model.disk.h.value
+tmp = (true_I_e, true_r_e, true_n, true_I_0, true_h, args.truePsfFWHM)
+plt.suptitle(r'True model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$, $FWHM = %.2f$' % tmp)
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig()
 
@@ -233,7 +286,8 @@ pdf.savefig()
 
 logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
-decomp.setSynthPSF(FWHM=2.4, size=9)
+logger.info('Model using PSF FWHM = %.2f.' % args.modelPsfFWHM)
+decomp.setSynthPSF(FWHM=args.modelPsfFWHM, size=9)
 decomp.loadData(base.l_ssp, full_spectra, full_noise, np.zeros_like(full_spectra, dtype='bool'))
 
 swll, swlu = 5590.0, 5680.0
@@ -243,9 +297,8 @@ qSignal, qNoise, qWl = decomp.getSpectraSlice(sl1, sl2)
 
 logger.warn('Computing initial model (takes a LOT of time).')
 t1 = time.time()
-initial_model = bd_initial_model(qSignal, qNoise, PSF, x0, y0)
-bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, PSF, flux_unit=1.0)
-logger.info('Refined initial model:\n%s\n' % initial_model)
+initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF)
+bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, decomp.PSF, flux_unit=1.0)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
 logger.debug('Plotting guessed initial model.')
@@ -274,6 +327,8 @@ ax.set_title(r'Disk')
 ax = plt.subplot(gs[1,:])
 bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
+y0 = initial_model.y0.value
+x0 = initial_model.x0.value
 pa_i, ba_i = ellipse_params(qSignal, x0, y0)
 mr = radialProfile(np.log10(qSignal), bins, x0, y0, pa_i, ba_i)
 br = radialProfile(np.log10(bulge_image), bins, x0, y0, pa_i, ba_i)
@@ -284,14 +339,16 @@ ax.plot(bins_c, dr, 'b-', label='Disk')
 ax.set_xlabel(r'Radius [arcsec]')
 ax.set_ylabel(r'$\log$ flux (relative)')
 ax.set_xlim(0.0, 30.0)
-ax.set_ylim(-1.0, 1.0)
+ax.set_ylim(-1.0, 1.1)
 ax.legend(loc='upper right')
 
 tmp = (initial_model.bulge.I_e.value,
        initial_model.bulge.r_e.value,
        initial_model.bulge.n.value,
-       initial_model.disk.I_0.value, initial_model.disk.h.value)
-plt.suptitle(r'Initial model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$' % tmp)
+       initial_model.disk.I_0.value,
+       initial_model.disk.h.value,
+       args.modelPsfFWHM)
+plt.suptitle(r'Initial model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$, $FWHM = %.2f$' % tmp)
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig()
 
