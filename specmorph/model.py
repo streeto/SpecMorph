@@ -121,12 +121,12 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
 
 ################################################################################
 
-def create_model_images(model, shape, PSF, flux_unit, nproc=None):
+def create_model_images(model, shape, PSF, nproc=None):
     bulge_model = model.getBulge()
     disk_model = model.getDisk()
     
-    bulge = model_image(bulge_model, shape, PSF, flux_unit, nproc)
-    disk = model_image(disk_model, shape, PSF, flux_unit, nproc)
+    bulge = model_image(bulge_model, shape, PSF, nproc)
+    disk = model_image(disk_model, shape, PSF, nproc)
     return bulge, disk
     
 ################################################################################

@@ -146,7 +146,7 @@ class IFSDecomposer(object):
         disk = np.empty((len(models), self.N_y, self.N_x))
         shape = (self.N_y, self.N_x)
         for i, model in enumerate(models):
-            bulge[i] = model_image(model.getBulge(), shape, self.PSF, self.flux_unit, nproc)
-            disk[i] = model_image(model.getDisk(), shape, self.PSF, self.flux_unit, nproc)
+            bulge[i] = model_image(model.getBulge(), shape, self.PSF, nproc) * self.flux_unit
+            disk[i] = model_image(model.getDisk(), shape, self.PSF, nproc) * self.flux_unit
         return bulge, disk
 ################################################################################

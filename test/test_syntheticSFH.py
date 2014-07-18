@@ -212,7 +212,7 @@ logger.info('Creating True PSF (FWHM = %.2f)' % args.truePsfFWHM)
 true_PSF = gaussian_psf(args.truePsfFWHM, size=15)
 
 logger.info('Creating model images.')
-bulge_image, disk_image = create_model_images(true_model, shape, true_PSF, flux_unit=1.0)
+bulge_image, disk_image = create_model_images(true_model, shape, true_PSF)
 bulge_image = np.ma.masked_where(flagged, bulge_image)
 disk_image = np.ma.array(disk_image, mask=flagged)
 model_image = bulge_image + disk_image
@@ -302,7 +302,7 @@ qSignal, qNoise, qWl = decomp.getSpectraSlice(sl1, sl2)
 logger.warn('Computing initial model (takes a LOT of time).')
 t1 = time.time()
 initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False)
-bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, decomp.PSF, flux_unit=1.0)
+bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, decomp.PSF)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
 logger.debug('Plotting guessed initial model.')

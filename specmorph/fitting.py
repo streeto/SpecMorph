@@ -36,9 +36,9 @@ def fit_image(flux, noise, guess_model, PSF=None,
 
 
 ################################################################################
-def model_image(model, shape, PSF, flux_unit, nproc=None):
+def model_image(model, shape, PSF, nproc=None):
     imfit = Imfit(model, PSF, quiet=True, nproc=nproc)
-    return imfit.getModelImage(shape) * flux_unit
+    return imfit.getModelImage(shape)
 ################################################################################
 
 
