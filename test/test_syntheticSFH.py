@@ -21,6 +21,7 @@ from os import path
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MultipleLocator
 import argparse
+from pystarlight.util.StarlightUtils import spec_resample
 
 ################################################################################
 def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
@@ -151,6 +152,7 @@ pdf = plot_setup(args.plotFile)
 logger.info('Loading base %s', path.basename(args.baseFile))
 t1 = time.clock()
 base = StarlightBase(args.baseFile, args.baseDir)
+l_ssp = np.arange(base.l_ssp.min(), base.l_ssp.max(), 2.0)
 logger.info('Took %.2f seconds to read the base (%d files)' % (time.clock() - t1, base.sspfile.size))
 wl_norm_window = (base.l_ssp < 5680.0) & (base.l_ssp > 5590.0)
 
@@ -159,11 +161,13 @@ bulge_sfh = SyntheticSFH(base.ageBase)
 bulge_sfh.addExp(14e9, 2.0e9, 1.0)
 bulge_flux = (base.f_ssp * bulge_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
 bulge_flux /= np.median(bulge_flux[wl_norm_window])
+bulge_flux = spec_resample(base.l_ssp, l_ssp, bulge_flux)
 
 disk_sfh = SyntheticSFH(base.ageBase)
 disk_sfh.addExp(10e9, 2.0e9, 1.0)
 disk_flux = (base.f_ssp * disk_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
 disk_flux /= np.median(disk_flux[wl_norm_window])
+disk_flux = spec_resample(base.l_ssp, l_ssp, disk_flux)
 
 logger.debug('Plotting SFH.')
 fig = plt.figure(figsize=(8,6))
@@ -179,8 +183,8 @@ ax.set_title(r'Star formation history')
 ax.legend(loc='upper left')
 
 ax = plt.subplot(gs[1])
-ax.plot(base.l_ssp, bulge_flux, 'r-')
-ax.plot(base.l_ssp, disk_flux, 'b-')
+ax.plot(l_ssp, bulge_flux, 'r-')
+ax.plot(l_ssp, disk_flux, 'b-')
 ax.set_xlabel(r'Wavelength [$\AA$]')
 ax.set_ylabel(r'Relative flux')
 ax.set_title(r'Spectra')
@@ -226,7 +230,7 @@ full_noise = full_spectra * noise
 tmp_noise = np.zeros(full_spectra.shape)
 for i in xrange(shape[0]):
     for j in xrange(shape[1]):
-        tmp_noise[:, i,j] = np.random.normal(0.0, model_noise.data[i,j] * flux_unit, len(base.l_ssp))
+        tmp_noise[:, i,j] = np.random.normal(0.0, model_noise.data[i,j] * flux_unit, len(l_ssp))
 full_spectra += tmp_noise
 
 logger.debug('Plotting true model.')
@@ -288,7 +292,7 @@ logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
 logger.info('Model using PSF FWHM = %.2f.' % args.modelPsfFWHM)
 decomp.setSynthPSF(FWHM=args.modelPsfFWHM, size=9)
-decomp.loadData(base.l_ssp, full_spectra, full_noise, np.zeros_like(full_spectra, dtype='bool'))
+decomp.loadData(l_ssp, full_spectra, full_noise, np.zeros_like(full_spectra, dtype='bool'))
 
 swll, swlu = 5590.0, 5680.0
 sl1 = find_nearest_index(decomp.wl, swll)
