@@ -7,7 +7,6 @@ Created on Jun 6, 2013
 from specmorph.util import logger
 from specmorph.califa import CALIFADecomposer
 from specmorph.califa.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
-from specmorph.fitting import fit_image
 from specmorph.model import BDModel, bd_initial_model, smooth_models
 
 from tables import openFile, Filters
@@ -22,28 +21,27 @@ import atpy
 
 
 ################################################################################
-def fit_image_cached(flux, noise, PSF, guess_model,
-                     mode='LM', insist=False, quiet=False, nproc=None, cache_model_file=None):
+def bd_initial_model_cached(flux, noise, PSF, quiet=False, nproc=None, cache_model_file=None):
     '''
     Doc me!
     '''
     if cache_model_file is not None and path.exists(cache_model_file):
         try:
-            guess_model = BDModel.readConfig(cache_model_file)
-            logger.debug('Cached model found:\n%s\n' % guess_model)
-            return guess_model
+            initial_model = BDModel.readConfig(cache_model_file)
+            logger.debug('Cached model found:\n%s\n' % initial_model)
+            return initial_model
         except:
             logger.warn('Bad cache model file %s. Deleting.' % cache_model_file)
             unlink(cache_model_file)
-    guess_model = fit_image(flux, noise, PSF, mode=mode, quiet=quiet)
+    initial_model = bd_initial_model(flux, noise, PSF, quiet=quiet)
     if cache_model_file is not None:
         with open(cache_model_file, 'w') as f:
             logger.debug('Saving cache model %s.' % cache_model_file)
             try:
-                f.write(str(guess_model))
+                f.write(str(initial_model))
             except:
                 logger.warn('Could not write cache model file %s' % cache_model_file)
-    return guess_model
+    return initial_model
 ################################################################################
 
 
@@ -181,11 +179,8 @@ logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
 t1 = time.time()
 qSignal = np.ma.array(decomp.K.qSignal, mask=~decomp.K.qMask)
 qNoise = np.ma.array(decomp.K.qNoise, mask=~decomp.K.qMask)
-guess_model = bd_initial_model(qSignal, qNoise, decomp.PSF, decomp.K.x0, decomp.K.y0)
-logger.debug('Guess model:\n%s\n' % guess_model)
-initial_model = fit_image_cached(qSignal, qNoise, decomp.PSF,
-                                 guess_model, mode='DE', quiet=False, nproc=args.nproc,
-                                 cache_model_file=dbfile + '.initmodel')
+initial_model = bd_initial_model_cached(qSignal, qNoise, decomp.PSF, quiet=False, nproc=args.nproc,
+                                        cache_model_file=dbfile + '.initmodel')
 logger.debug('Refined initial model:\n%s\n' % initial_model)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
