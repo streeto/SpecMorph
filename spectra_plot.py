@@ -361,10 +361,9 @@ for i in xrange(N_cols):
             total_im = grp.f_obs__lyx[l]
         mask = ~np.isnan(total_im)
         pa, ba = getEllipseParams(total_im, x0, y0, mask=mask)
-        r__yx = getImageDistance(total_im.shape, x0, y0, pa, ba)
-        bulge_r = radialProfile(bulge_im, r__yx, bin_r, rad_scale=1.0)
-        disk_r = radialProfile(disk_im, r__yx, bin_r, rad_scale=1.0)
-        total_r = radialProfile(total_im, r__yx, bin_r, rad_scale=1.0, mask=mask)
+        bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
+        disk_r = radialProfile(disk_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
+        total_r = radialProfile(total_im, bin_r, x0, y0, pa, ba, rad_scale=1.0, mask=mask)
         ax.plot(bin_c, np.log10(total_r), 'k', label='synthetic' if use_fsyn else 'observed')
         ax.plot(bin_c, np.log10(disk_r + bulge_r), 'k:', label='model')
         ax.plot(bin_c, np.log10(disk_r), 'b:', label='disk model')
