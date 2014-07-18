@@ -7,8 +7,8 @@ Created on Jun 6, 2013
 from specmorph.util import logger
 from specmorph.califa import CALIFADecomposer
 from specmorph.califa.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
-from specmorph.model import BDModel, bd_initial_model
 from specmorph.fitting import fit_image
+from specmorph.model import BDModel, bd_initial_model, smooth_models
 
 from tables import openFile, Filters
 import numpy as np
@@ -120,67 +120,6 @@ def save_array(db, parent, name, data, overwrite=False):
 
 
 ################################################################################
-def smooth_param_median(param, flags):
-    flag_ok = (flags == 0)
-    average_p = np.median(param[flag_ok])
-    return np.ones_like(param) * average_p
-################################################################################
-
-
-################################################################################
-def smooth_param_box(param, flags, radius):
-    p = param.copy()
-    N_par = len(param)
-    for i in xrange(N_par):
-        l1 = max(0, i - radius)
-        l2 = min(i + radius, N_par - 1)
-        flag_ok = (flags[l1:l2] == 0)
-        if flag_ok.any():
-            p[i] = np.median(param[l1:l2][flag_ok])
-    return p
-################################################################################
-
-
-################################################################################
-def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
-    flag_ok = (flags == 0) & (wl > 4500.0)
-    from astropy.modeling import models, fitting
-    line = models.Polynomial1D(degree)
-    fit = fitting.LinearLSQFitter()
-    param_fitted = fit(line, wl[flag_ok], param[flag_ok])
-    return param_fitted(l_obs)
-################################################################################
-
-
-################################################################################
-def smooth_models(models, wl):
-    params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-    smooth_params = np.empty(len(wl), dtype=params[0].dtype)    
-    param_wl = params['wl']
-    param_flag = params['flag']
-
-    for p in params.dtype.names:
-        if p in ['wl', 'flag', 'chi2', 'n_pix']: continue
-        smooth_params[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree=1)
-    
-    models = []
-    for i in xrange(len(smooth_params)):
-        m = BDModel.fromParamVector(smooth_params[i])
-        m.x0.fixed=True
-        m.y0.fixed=True
-        m.bulge.r_e.fixed=True
-        m.bulge.n.fixed=True
-        m.bulge.PA.fixed=True
-        m.bulge.ell.fixed=True
-        m.disk.h.fixed=True
-        m.disk.PA.fixed=True
-        m.disk.ell.fixed=True
-        models.append(m)
-    return models
-################################################################################
-
-
-################################################################################
 parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
 
 parser.add_argument('galaxyId', type=str, nargs=1,
@@ -277,7 +216,7 @@ else:
 
     t1 = time.time()
     logger.info('Smoothing parameters.')
-    models = smooth_models(models, decomp.wl)
+    models = smooth_models(models, decomp.wl, degree=1)
     
     logger.info('Starting second pass modeling...')
     models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,

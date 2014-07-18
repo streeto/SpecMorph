@@ -6,7 +6,7 @@ Created on 30/05/2014
 
 
 from specmorph.components import SyntheticSFH
-from specmorph.model import BDModel, bd_initial_model, create_model_images
+from specmorph.model import BDModel, bd_initial_model, create_model_images, smooth_models
 from specmorph.decomposition import IFSDecomposer
 from specmorph.geometry import distance, ellipse_params
 from specmorph.util import logger, find_nearest_index
@@ -22,45 +22,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MultipleLocator
 import argparse
 from pystarlight.util.StarlightUtils import spec_resample
-
-################################################################################
-def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
-    flag_ok = (flags == 0) & (wl > 4500.0)
-    from astropy.modeling import models, fitting
-    line = models.Polynomial1D(degree)
-    fit = fitting.LinearLSQFitter()
-    param_fitted = fit(line, wl[flag_ok], param[flag_ok])
-    return param_fitted(l_obs)
-################################################################################
-
-
-################################################################################
-def smooth_models(models, wl):
-    params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-    smooth_params = np.empty(len(wl), dtype=params[0].dtype)    
-    param_wl = params['wl']
-    param_flag = params['flag']
-
-    for p in params.dtype.names:
-        if p in ['wl', 'flag', 'chi2', 'n_pix']: continue
-        smooth_params[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree=1)
-    
-    models = []
-    for i in xrange(len(smooth_params)):
-        m = BDModel.fromParamVector(smooth_params[i])
-        m.x0.fixed=True
-        m.y0.fixed=True
-        m.bulge.r_e.fixed=True
-        m.bulge.n.fixed=True
-        m.bulge.PA.fixed=True
-        m.bulge.ell.fixed=True
-        m.disk.h.fixed=True
-        m.disk.PA.fixed=True
-        m.disk.ell.fixed=True
-        models.append(m)
-    return models
-################################################################################
-
 
 ################################################################################
 def parse_args():
@@ -364,7 +325,7 @@ first_pass_lambdas = decomp.wl[::100]
 logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
 
 logger.info('Smoothing parameters.')
-smoothed_models = smooth_models(first_pass_models, decomp.wl)
+smoothed_models = smooth_models(first_pass_models, decomp.wl, degree=1)
 smoothed_params = np.array([m.getParams() for m in smoothed_models], dtype=smoothed_models[0].dtype)
         
 logger.info('Starting second pass modeling...')
