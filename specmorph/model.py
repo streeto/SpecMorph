@@ -64,7 +64,7 @@ def fix_PA_ell(PA, ell):
 
 ################################################################################
 
-def bd_initial_model(image, noise, PSF, x0=None, y0=None):
+def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
     '''
     Doc me!
     '''
@@ -95,7 +95,8 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     disk_model.bulge.PA.fixed=True
     disk_model.bulge.ell.fixed=True
     logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(disk_model)))
-    fitted_model, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF, mode='DE')
+    fitted_model, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF,
+                                              mode='DE', quiet=quiet, nproc=nproc)
     pa, ell = fix_PA_ell(fitted_model.disk.PA.value, fitted_model.disk.ell.value)
     fitted_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
     fitted_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
@@ -109,7 +110,8 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None):
     bdmodel.disk.I_0.setTolerance(0.3)
     bdmodel.disk.h.setTolerance(0.3)
     logger.debug('Guess model:\n%s\n' % str(bdmodel))
-    initial_model, converged, chi2 = fit_image(image, noise, bdmodel, PSF, mode='DE', quiet=False)
+    initial_model, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
+                                               mode='DE', quiet=quiet, nproc=nproc)
     pa, ell = fix_PA_ell(initial_model.bulge.PA.value, initial_model.bulge.ell.value)
     initial_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
     initial_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])

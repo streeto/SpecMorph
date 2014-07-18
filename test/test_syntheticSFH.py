@@ -301,7 +301,7 @@ qSignal, qNoise, qWl = decomp.getSpectraSlice(sl1, sl2)
 
 logger.warn('Computing initial model (takes a LOT of time).')
 t1 = time.time()
-initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF)
+initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False)
 bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, decomp.PSF, flux_unit=1.0)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
