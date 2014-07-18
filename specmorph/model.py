@@ -14,7 +14,6 @@ import numpy as np
 __all__ = ['BDModel', 'bd_initial_model', 'create_model_images']
 
 ################################################################################
-
 def fix_PA_ell(PA, ell):
     '''
     Force position angle (P.A.) into (0, 180) range,
@@ -61,9 +60,10 @@ def fix_PA_ell(PA, ell):
             return PA + 90.0, inv_ell(ell)
     else:
         return PA, ell
-
 ################################################################################
 
+
+################################################################################
 def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
     '''
     Doc me!
@@ -95,32 +95,46 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
     disk_model.bulge.PA.fixed=True
     disk_model.bulge.ell.fixed=True
     logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(disk_model)))
-    fitted_model, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF,
-                                              mode='DE', quiet=quiet, nproc=nproc)
-    pa, ell = fix_PA_ell(fitted_model.disk.PA.value, fitted_model.disk.ell.value)
-    fitted_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
-    fitted_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
-    logger.info('Disk fit - converged: %s; chi2 = %.2f; h = %.2f' % (converged, chi2, fitted_model.disk.h.value))
-    logger.debug('Fitted disk (r > %.2f):\n%s\n' % (disk_begins, str(fitted_model)))
-
-    bdmodel = BDModel(wl=5635.0, x0=x0, y0=y0,
-                      I_e=image.max(), r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
-                      I_0=fitted_model.disk.I_0.value, h=fitted_model.disk.h.value,
-                      PA_d=fitted_model.disk.PA.value, ell_d=fitted_model.disk.ell.value)
+    bdmodel, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF,
+                                         mode='DE', quiet=quiet, nproc=nproc)
+    pa, ell = fix_PA_ell(bdmodel.disk.PA.value, bdmodel.disk.ell.value)
+    bdmodel.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
+    bdmodel.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     bdmodel.disk.I_0.setTolerance(0.3)
     bdmodel.disk.h.setTolerance(0.3)
-    logger.debug('Guess model:\n%s\n' % str(bdmodel))
-    initial_model, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
-                                               mode='DE', quiet=quiet, nproc=nproc)
-    pa, ell = fix_PA_ell(initial_model.bulge.PA.value, initial_model.bulge.ell.value)
-    initial_model.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
-    initial_model.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
-    logger.info('Initial model fit - converged: %s; chi2 = %.2f' % (converged, chi2))
-    logger.debug('Found initial model:\n%s\n' % str(initial_model))
-    return initial_model
+    logger.info('Disk fit - converged: %s; chi2 = %.2f; h = %.2f' % (converged, chi2, bdmodel.disk.h.value))
+    logger.debug('Fitted disk (r > %.2f):\n%s\n' % (disk_begins, str(bdmodel)))
 
+    image_max = image.max()
+    bdmodel.bulge.I_e.setValue(image_max, [1e-33, 2*image_max])
+    bdmodel.bulge.PA.setValue(pa, [pa - 30.0, pa + 30.0])
+    bdmodel.bulge.PA.fixed=False
+    bdmodel.bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    bdmodel.bulge.ell.fixed=False
+    bdmodel.bulge.I_e.fixed=False
+    bdmodel.bulge.r_e.fixed=False
+    bdmodel.bulge.n.fixed=False
+    logger.debug('First guess model:\n%s\n' % str(bdmodel))
+    bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
+                                         mode='DE', quiet=quiet, nproc=nproc)
+    pa, ell = fix_PA_ell(bdmodel.bulge.PA.value, bdmodel.bulge.ell.value)
+    bdmodel.bulge.PA.setValue(pa, [pa - 30.0, pa + 30.0])
+    bdmodel.bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    pa, ell = fix_PA_ell(bdmodel.disk.PA.value, bdmodel.disk.ell.value)
+    bdmodel.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
+    bdmodel.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    logger.info('First guess fit - converged: %s; chi2 = %.2f' % (converged, chi2))
+
+    logger.debug('Second guess model:\n%s\n' % str(bdmodel))
+    bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
+                                         mode='NM', quiet=quiet, nproc=nproc)
+    logger.info('Second guess - converged: %s; chi2 = %.2f' % (converged, chi2))
+    logger.debug('Final model:\n%s\n' % str(bdmodel))
+    return bdmodel
 ################################################################################
 
+
+################################################################################
 def create_model_images(model, shape, PSF, nproc=None):
     bulge_model = model.getBulge()
     disk_model = model.getDisk()
@@ -128,9 +142,10 @@ def create_model_images(model, shape, PSF, nproc=None):
     bulge = model_image(bulge_model, shape, PSF, nproc)
     disk = model_image(disk_model, shape, PSF, nproc)
     return bulge, disk
-    
 ################################################################################
 
+    
+################################################################################
 def bulge_function(I_e, r_e, n, PA, ell):
     bulge = function_description('Sersic', name='bulge')
     bulge.I_e.setValue(I_e, [1e-33, 2.0*I_e])
@@ -139,9 +154,10 @@ def bulge_function(I_e, r_e, n, PA, ell):
     bulge.PA.setValue(PA, [PA - 30.0, PA + 30.0])
     bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
     return bulge
-
 ################################################################################
 
+
+################################################################################
 def disk_function(I_0, h, PA, ell):
     disk = function_description('Exponential', name='disk')
     disk.I_0.setValue(I_0, [1e-33, 2.0*I_0])
@@ -151,6 +167,8 @@ def disk_function(I_0, h, PA, ell):
     return disk
 ################################################################################
 
+
+################################################################################
 def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
     flag_ok = (flags == 0) & (wl > 4500.0)
     from astropy.modeling import models, fitting
@@ -158,6 +176,8 @@ def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
     fit = fitting.LinearLSQFitter()
     param_fitted = fit(line, wl[flag_ok], param[flag_ok])
     return param_fitted(l_obs)
+################################################################################
+
 
 ################################################################################
 def smooth_models(models, wl, degree=1):
@@ -186,6 +206,8 @@ def smooth_models(models, wl, degree=1):
     return models
 ################################################################################
 
+
+################################################################################
 class BDModel(SimpleModelDescription):
 
     def __init__(self, wl, x0, y0, I_e, r_e, n, PA_b, ell_b, I_0, h, PA_d, ell_d):
@@ -272,5 +294,4 @@ class BDModel(SimpleModelDescription):
         return type(self)(self.wl, self.x0.value, self.y0.value,
                           self.bulge.I_e.value, self.bulge.r_e.value, self.bulge.n.value, self.bulge.PA.value, self.bulge.ell.value,
                           self.disk.I_0.value, self.disk.h.value, self.disk.PA.value, self.disk.ell.value)
-
 ################################################################################
