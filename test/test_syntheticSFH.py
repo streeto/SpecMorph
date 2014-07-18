@@ -376,6 +376,23 @@ logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 logger.info('Computing model spectra.')
 fitted_bulge_spectra, fitted_disk_spectra = decomp.getModelSpectra(models)
 
+logger.info('Average fit results:')
+norm_fitted_I_e = fitted_params['I_e'] / bulge_flux
+norm_fitted_I_0 = fitted_params['I_0'] / disk_flux
+logger.info('    %s = %.3f +/- %.3f' % ('I_e', np.mean(norm_fitted_I_e), np.std(norm_fitted_I_e)))
+logger.info('    %s = %.3f +/- %.3f' % ('I_0', np.mean(norm_fitted_I_0), np.std(norm_fitted_I_0)))
+print_params = ('r_e', 'n', 'PA_b', 'ell_b', 'h', 'PA_d', 'ell_d', )
+for p in fitted_params.dtype.names:
+    if p not in print_params: continue
+    logger.info('    %s = %.3f +/- %.3f' % (p, np.mean(fitted_params[p]), np.std(fitted_params[p])))
+
+logger.info('Original parameters:')
+logger.info('    %s = %.3f' % ('I_e', true_model.bulge.I_e.value))
+logger.info('    %s = %.3f' % ('I_0', true_model.disk.I_0.value))
+for p, val in zip(true_model.dtype.names, true_model.getParams()):
+    if p not in print_params: continue
+    logger.info('    %s = %.3f' % (p, val))
+
 
 ################################################################################
 ##########
