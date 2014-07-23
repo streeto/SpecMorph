@@ -12,6 +12,7 @@ from specmorph.geometry import distance, ellipse_params
 from specmorph.util import logger, find_nearest_index
 
 from pystarlight.util.base import StarlightBase
+from pystarlight.util.StarlightUtils import spec_resample, bin_edges
 from pycasso.util import radialProfile
 from imfit import gaussian_psf
 import numpy as np
@@ -21,7 +22,6 @@ from os import path
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MultipleLocator
 import argparse
-from pystarlight.util.StarlightUtils import spec_resample
 
 ################################################################################
 def parse_args():
@@ -135,8 +135,10 @@ fig = plt.figure(figsize=(8,6))
 gs = plt.GridSpec(2, 1, height_ratios=[1.0, 1.0])
 ax = plt.subplot(gs[0])
 age_Gyr = base.ageBase / 1e9
-ax.plot(age_Gyr, bulge_sfh.massVector(), 'r-', label='bulge')
-ax.plot(age_Gyr, disk_sfh.massVector(), 'b-', label='disk')
+age_bin_edges = 10**(bin_edges(np.log10(base.ageBase)))
+dt = age_bin_edges[1:] - age_bin_edges[:-1]                     
+ax.plot(age_Gyr, bulge_sfh.massVector() / dt, 'r-', label='bulge')
+ax.plot(age_Gyr, disk_sfh.massVector() / dt, 'b-', label='disk')
 ax.set_xlim(age_Gyr.min(), age_Gyr.max())
 ax.set_xlabel(r'Age [Gyr]')
 ax.set_ylabel(r'SFR (weight)')
@@ -535,65 +537,68 @@ fig = plt.figure(figsize=(8, 10))
 gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
-f_total = decomp.flux[:,37,37]
-f_disk = fitted_disk_spectra[:,37,37]
-f_disk_orig = disk_spectra[:,37,37]
-f_bulge = fitted_bulge_spectra[:,37,37]
-f_bulge_orig = bulge_spectra[:,37,37]
+xx = np.round(initial_model.x0.value)
+yy = np.round(initial_model.y0.value)
+f_total = decomp.flux[:,yy,xx]
+f_disk = fitted_disk_spectra[:,yy,xx]
+f_disk_orig = disk_spectra[:,yy,xx]
+f_bulge = fitted_bulge_spectra[:,yy,xx]
+f_bulge_orig = bulge_spectra[:,yy,xx]
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
 ax.plot(decomp.wl, f_total, 'k', label='observed')
 ax.plot(decomp.wl, f_disk, 'b', label='disk model')
-ax.plot(decomp.wl, f_disk_orig, 'b--', label='original disk')
+ax.plot(decomp.wl, f_disk_orig, 'b:', label='original disk')
 ax.plot(decomp.wl, f_bulge, 'r', label='bulge model')
-ax.plot(decomp.wl, f_bulge_orig, 'r--', label='original bulge')
+ax.plot(decomp.wl, f_bulge_orig, 'r:', label='original bulge')
 ax.plot(decomp.wl, f_res, 'm', label='residual')
 ax.set_xlim(decomp.wl.min(), decomp.wl.max())
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xticklabels([])
 ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
+ax.set_title(r'Spectra at the nucleus')
 ax.legend()
 
 ax = plt.subplot(gs[2])
-I_e = func['I_e'](fitted_params['I_e'])
-I_0 = func['I_0'](fitted_params['I_0'])
-vmin = min(I_e.min(), I_0.min())
-vmax = max(I_e.max(), I_0.max())
-ax.plot(decomp.wl, I_0, 'b', label=r'Disk $(I_{0})$')
-ax.plot(decomp.wl, I_e, 'r', label=r'Bulge $(I_{e})$')
-if limits['I_0'] is not None:
-    ymin = limits['I_0'][0]
-    ymax = limits['I_0'][1]
-else:
-    ymin = y.min()
-    ymax = y.max()
-ax.set_ylim(ymin, ymax)
+xx = np.ceil(initial_model.x0.value + initial_model.bulge.r_e.value)
+f_total = decomp.flux[:,yy,xx]
+f_disk = fitted_disk_spectra[:,yy,xx]
+f_disk_orig = disk_spectra[:,yy,xx]
+f_bulge = fitted_bulge_spectra[:,yy,xx]
+f_bulge_orig = bulge_spectra[:,yy,xx]
+f_res = f_total - f_disk - f_bulge
+vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
+vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
+ax.plot(decomp.wl, f_total, 'k', label='observed')
+ax.plot(decomp.wl, f_disk, 'b', label='disk model')
+ax.plot(decomp.wl, f_disk_orig, 'b:', label='original disk')
+ax.plot(decomp.wl, f_bulge, 'r', label='bulge model')
+ax.plot(decomp.wl, f_bulge_orig, 'r:', label='original bulge')
+ax.plot(decomp.wl, f_res, 'm', label='residual')
 ax.set_xlim(decomp.wl.min(), decomp.wl.max())
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xticklabels([])
-ax.set_ylabel(r'$\log\ I$')
+ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
+ax.set_title(r'Spectra at $R = r_e$ ($%.1f\,arcsec$)' % initial_model.bulge.r_e.value)
 ax.legend()
 
 ax = plt.subplot(gs[3])
-r_e = func['r_e'](fitted_params['r_e'])
-h = func['h'](fitted_params['h'])
-vmin = min(r_e.min(), h.min())
-vmax = max(r_e.max(), h.max())
-ax.plot(decomp.wl, h, 'b', label=r'Disk $(h)$')
-ax.plot(decomp.wl, r_e, 'r', label=r'Bulge $(r_{e})$')
-if limits['r_e'] is not None:
-    ymin = limits['r_e'][0]
-    ymax = limits['r_e'][1]
-else:
-    ymin = y.min()
-    ymax = y.max()
-ax.set_ylim(ymin, ymax)
+I_e = fitted_params['I_e'] / bulge_flux
+I_0 = fitted_params['I_0'] / disk_flux
+vmax = max(I_e.max(), I_0.max()) + 1.0
+ax.hlines(true_params['I_0'], decomp.wl.min(), decomp.wl.max(), linestyles=':', colors='b', label=r'Original $I_0$')
+ax.plot(decomp.wl, I_0, 'b', label=r'Fitted $I_0$')
+ax.hlines(true_params['I_e'], decomp.wl.min(), decomp.wl.max(), linestyles=':', colors='r', label=r'Original $I_e$')
+ax.plot(decomp.wl, I_e, 'r', label=r'Fitted $I_e$')
+ax.set_ylim(0.0, vmax)
 ax.set_xlim(decomp.wl.min(), decomp.wl.max())
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xlabel(r'wavelength $[\AA]$')
-ax.set_ylabel(r'radius $[arcsec]$')
+ax.set_ylabel(r'Relative flux')
+ax.set_title(r'Normalized parameters $I_e$ and $I_0$')
 ax.legend()
+
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
 
