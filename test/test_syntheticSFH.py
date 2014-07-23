@@ -29,6 +29,8 @@ def parse_args():
     
     parser.add_argument('--model', dest='trueModel',
                         help='File containing the morphological model of the galaxy.')
+    parser.add_argument('--model-deriv', dest='trueModelDeriv',
+                        help='File containing the the wavelength derivative of the morphological model of the galaxy.')
     parser.add_argument('--base', dest='baseFile', default='BASE.gsd6e',
                         help='File describing the starlight bases.')
     parser.add_argument('--base-dir', dest='baseDir', default='BasesDir',
@@ -114,7 +116,7 @@ def default_model():
 
 
 ################################################################################
-def get_model(model_file=None):
+def get_model(model_file=None, with_default=False):
     if model_file is not None:
         try:
             logger.info('Loading model from %s.' % model_file)
@@ -123,9 +125,11 @@ def get_model(model_file=None):
             return model
         except:
             raise Exception('Could not read model file %s.' % model_file)
-    else:
+    elif not with_default:
         logger.info('Using default model.')
         return default_model()
+    else:
+        raise Exception('No model_file and with_default=False, what do you want?')
 ################################################################################
 
 
@@ -204,11 +208,9 @@ pdf.savefig()
 ################################################################################
 
 logger.info('Creating original B-D models.')
-norm_model = get_model(args.trueModel)
-model_deriv = np.zeros((1,), dtype=norm_model.dtype)
-model_deriv['h'] = 5.0 / 3000.0
-model_deriv['r_e'] = 1.0 / 3000.0
-model_deriv['n'] = 0.5 / 3000.0
+norm_model = get_model(args.trueModel, with_default=True)
+model_deriv = np.array(get_model(args.trueModelDeriv).getParams(), dtype=norm_model.dtype)
+print model_deriv, model_deriv.dtype
 original_models = linear_model(norm_model, model_deriv, l_ssp)
 logger.info('Original model at normalization window:\n%s\n' % str(norm_model))
 
