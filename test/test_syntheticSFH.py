@@ -68,6 +68,33 @@ def plot_setup(plot_file):
 
 
 ################################################################################
+def line(x0, y0, a, x):
+    '''
+    Creates a line passing through ``(x0, y0)`` with
+    angle ``tan(theta) = a``.
+    
+    Parameters
+    ----------
+    x0, y0 : float
+        Coordinates of the root point of the line.
+        
+    a : float
+        Tangent of the angle between the line and
+        the X axis.
+        
+    x : array
+        X-coordinates of the line to be created.
+        
+    Return
+    ------
+    y : array
+        Y coordinates of the line, same shape as ``x``.
+    '''
+    return (x - x0) * a + y0
+################################################################################
+
+
+################################################################################
 def default_model():
     x0 = 36.0
     y0 = 33.0
@@ -91,12 +118,28 @@ def get_model(model_file=None):
     if model_file is not None:
         try:
             logger.info('Loading model from %s.' % model_file)
-            return BDModel.readConfig(model_file)
+            model = BDModel.readConfig(model_file)
+            model.wl = 5635.0
+            return model
         except:
             raise Exception('Could not read model file %s.' % model_file)
     else:
         logger.info('Using default model.')
         return default_model()
+################################################################################
+
+
+################################################################################
+def linear_model(model_0, a, wl):
+    p_0 = np.array(model_0.getParams(), dtype=model_0.dtype)
+    wl_0 = p_0['wl']
+    p = np.zeros(len(wl), dtype=p_0.dtype)
+    p['wl'] = wl
+    
+    for n in p_0.dtype.names:
+        p[n] = line(wl_0, p_0[n], a[n], wl)
+
+    return [BDModel.fromParamVector(k) for k in p]
 ################################################################################
 
         
@@ -160,61 +203,71 @@ pdf.savefig()
 ##########
 ################################################################################
 
-logger.info('Creating true B-D model.')
-true_model = get_model(args.trueModel)
-logger.info('True model (wavelength independent):\n%s\n' % str(true_model))
+logger.info('Creating original B-D models.')
+norm_model = get_model(args.trueModel)
+model_deriv = np.zeros((1,), dtype=norm_model.dtype)
+model_deriv['h'] = 5.0 / 3000.0
+model_deriv['r_e'] = 1.0 / 3000.0
+model_deriv['n'] = 0.5 / 3000.0
+original_models = linear_model(norm_model, model_deriv, l_ssp)
+logger.info('Original model at normalization window:\n%s\n' % str(norm_model))
 
-shape = (72,77)
-true_y0 = true_model.y0.value
-true_x0 = true_model.x0.value
-flagged = distance(shape, true_x0, true_y0) > 32.0
+imshape = (72,77)
+ifsshape = (len(l_ssp),) + imshape
+norm_y0 = norm_model.y0.value
+norm_x0 = norm_model.x0.value
+flagged = distance(imshape, norm_x0, norm_y0) > 32.0
 noise = 0.05
 flux_unit = 1e-16
 
-logger.info('Creating True PSF (FWHM = %.2f)' % args.truePsfFWHM)
-true_PSF = gaussian_psf(args.truePsfFWHM, size=15)
+logger.info('Creating original PSF (FWHM = %.2f ")' % args.truePsfFWHM)
+original_PSF = gaussian_psf(args.truePsfFWHM, size=15)
 
 logger.info('Creating model images.')
-bulge_image, disk_image = create_model_images(true_model, shape, true_PSF)
-bulge_image = np.ma.masked_where(flagged, bulge_image)
-disk_image = np.ma.array(disk_image, mask=flagged)
+bulge_image = np.ma.empty(ifsshape)
+disk_image = np.ma.empty(ifsshape)
+for i, model in enumerate(original_models):
+    bulge_image[i], disk_image[i] = create_model_images(model, imshape, original_PSF)
+bulge_image[:,flagged] = np.ma.masked
+disk_image[:,flagged] = np.ma.masked
 model_image = bulge_image + disk_image
-# bulge_frac = bulge_image / model_image
-# disk_frac = disk_image / model_image
-model_noise = model_image * noise
+#model_noise = model_image * noise
 
 logger.info('Creating IFS.')
 bulge_spectra = bulge_image * (flux_unit * bulge_flux[..., np.newaxis, np.newaxis]) 
 disk_spectra = disk_image * (flux_unit * disk_flux[..., np.newaxis, np.newaxis]) 
 full_spectra = bulge_spectra + disk_spectra
 full_noise = full_spectra * noise
-# qNoise = np.ones_like(qSignal) * 0.1
-# Add gaussian noise to spectra.
+
+# FIXME: How to add gaussian noise to spectra?
+logger.info('Adding gaussian noise to IFS.')
 tmp_noise = np.zeros(full_spectra.shape)
-for i in xrange(shape[0]):
-    for j in xrange(shape[1]):
-        tmp_noise[:, i,j] = np.random.normal(0.0, model_noise.data[i,j] * flux_unit, len(l_ssp))
+for i in xrange(ifsshape[0]):
+    for j in xrange(ifsshape[1]):
+        for k in xrange(ifsshape[2]):
+            tmp_noise[i,j,k] = np.random.normal(0.0, full_noise.data[i,j,k])
 full_spectra += tmp_noise
 
-logger.debug('Plotting true model.')
+logger.debug('Plotting original model.')
+index_norm = find_nearest_index(l_ssp, 5635.0)
 vmin = np.log10(model_image.min())
 vmax = np.log10(model_image.max())
 fig = plt.figure(figsize=(8, 6))
 gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
 ax = plt.subplot(gs[0,0])
-ax.imshow(np.log10(model_image), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(model_image[index_norm]), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Total')
 
 ax = plt.subplot(gs[0,1])
-ax.imshow(np.log10(bulge_image), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(bulge_image[index_norm]), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Bulge')
 
 ax = plt.subplot(gs[0,2])
-ax.imshow(np.log10(disk_image), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(disk_image[index_norm]), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Disk')
@@ -222,10 +275,10 @@ ax.set_title(r'Disk')
 ax = plt.subplot(gs[1,:])
 bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
-pa, ba = ellipse_params(model_image, true_x0, true_y0)
-mr = radialProfile(np.log10(model_image), bins, true_x0, true_y0, pa, ba)
-br = radialProfile(np.log10(bulge_image), bins, true_x0, true_y0, pa, ba)
-dr = radialProfile(np.log10(disk_image), bins, true_x0, true_y0, pa, ba)
+pa, ba = ellipse_params(model_image[index_norm], norm_x0, norm_y0)
+mr = radialProfile(np.log10(model_image[index_norm]), bins, norm_x0, norm_y0, pa, ba)
+br = radialProfile(np.log10(bulge_image[index_norm]), bins, norm_x0, norm_y0, pa, ba)
+dr = radialProfile(np.log10(disk_image[index_norm]), bins, norm_x0, norm_y0, pa, ba)
 ax.plot(bins_c, mr, 'k-', label='Total')
 ax.plot(bins_c, br, 'r-', label='Bulge')
 ax.plot(bins_c, dr, 'b-', label='Disk')
@@ -235,13 +288,13 @@ ax.set_xlim(0.0, 30.0)
 ax.set_ylim(-1.0, 1.1)
 ax.legend(loc='upper right')
 
-true_I_e = true_model.bulge.I_e.value
-true_r_e = true_model.bulge.r_e.value
-true_n = true_model.bulge.n.value
-true_I_0 = true_model.disk.I_0.value
-true_h = true_model.disk.h.value
-tmp = (true_I_e, true_r_e, true_n, true_I_0, true_h, args.truePsfFWHM)
-plt.suptitle(r'True model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$, $FWHM = %.2f$' % tmp)
+norm_I_e = norm_model.bulge.I_e.value
+norm_r_e = norm_model.bulge.r_e.value
+norm_n = norm_model.bulge.n.value
+norm_I_0 = norm_model.disk.I_0.value
+norm_h = norm_model.disk.h.value
+tmp = (norm_I_e, norm_r_e, norm_n, norm_I_0, norm_h, args.truePsfFWHM)
+plt.suptitle(r'Original model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$, $FWHM = %.2f$' % tmp)
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig()
 
@@ -253,7 +306,7 @@ pdf.savefig()
 
 logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
-logger.info('Model using PSF FWHM = %.2f.' % args.modelPsfFWHM)
+logger.info('Model using PSF FWHM = %.2f ".' % args.modelPsfFWHM)
 decomp.setSynthPSF(FWHM=args.modelPsfFWHM, size=9)
 decomp.loadData(l_ssp, full_spectra, full_noise, np.zeros_like(full_spectra, dtype='bool'))
 
@@ -274,7 +327,7 @@ vmax = np.log10(qSignal.max())
 fig = plt.figure(figsize=(8, 6))
 gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
 ax = plt.subplot(gs[0,0])
-ax.imshow(np.log10(model_image), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(model_image[index_norm]), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Total')
@@ -332,29 +385,20 @@ smoothed_params = np.array([m.getParams() for m in smoothed_models], dtype=smoot
         
 logger.info('Starting second pass modeling...')
 t1 = time.time()
-models = decomp.fitSpectra(step=1, box_radius=0, initial_model=smoothed_models, mode='LM', insist=True)
-fitted_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+fitted_models = decomp.fitSpectra(step=1, box_radius=0, initial_model=smoothed_models, mode='LM', insist=True)
+fitted_params = np.array([m.getParams() for m in fitted_models], dtype=fitted_models[0].dtype)
 logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 
 logger.info('Computing model spectra.')
-fitted_bulge_spectra, fitted_disk_spectra = decomp.getModelSpectra(models)
+fitted_bulge_spectra, fitted_disk_spectra = decomp.getModelSpectra(fitted_models)
 
 logger.info('Average fit results:')
-norm_fitted_I_e = fitted_params['I_e'] / bulge_flux
-norm_fitted_I_0 = fitted_params['I_0'] / disk_flux
-logger.info('    %s = %.3f +/- %.3f' % ('I_e', np.mean(norm_fitted_I_e), np.std(norm_fitted_I_e)))
-logger.info('    %s = %.3f +/- %.3f' % ('I_0', np.mean(norm_fitted_I_0), np.std(norm_fitted_I_0)))
-print_params = ('r_e', 'n', 'PA_b', 'ell_b', 'h', 'PA_d', 'ell_d', )
+original_params = np.array([m.getParams() for m in original_models], dtype=original_models[0].dtype)
+print_params = ('I_e', 'r_e', 'n', 'PA_b', 'ell_b', 'I_0', 'h', 'PA_d', 'ell_d', )
 for p in fitted_params.dtype.names:
     if p not in print_params: continue
-    logger.info('    %s = %.3f +/- %.3f' % (p, np.mean(fitted_params[p]), np.std(fitted_params[p])))
-
-logger.info('Original parameters:')
-logger.info('    %s = %.3f' % ('I_e', true_model.bulge.I_e.value))
-logger.info('    %s = %.3f' % ('I_0', true_model.disk.I_0.value))
-for p, val in zip(true_model.dtype.names, true_model.getParams()):
-    if p not in print_params: continue
-    logger.info('    %s = %.3f' % (p, val))
+    delta_p_norm = (fitted_params[p] - original_params[p]) / original_params[p]
+    logger.info('    delta %s (norm.) = %.3f +/- %.3f' % (p, np.mean(delta_p_norm), np.std(delta_p_norm)))
 
 
 ################################################################################
@@ -438,13 +482,13 @@ fig = plt.figure(figsize=(8, 7))
 n_rows = 4
 n_cols = 3
 gs = plt.GridSpec(n_rows, n_cols)
-true_params = np.array(true_model.getParams(), dtype=true_model.dtype)
 for i, colname in enumerate(colnames):
     if colname is None: continue
     ax = plt.subplot(gs[i])
+    y_orig = func[colname](original_params[colname])
     y = func[colname](fitted_params[colname])
     y_1p = func[colname](first_pass_params[colname])
-    ax.hlines(func[colname](true_params[colname]), decomp.wl.min(), decomp.wl.max(), linestyles=':', colors='k')
+    ax.plot(decomp.wl, y_orig, ':k')
     ax.plot(first_pass_lambdas, y_1p, '.r')
     ax.plot(decomp.wl, y, 'k')
     ax.set_ylabel(ylabel[colname])
@@ -548,11 +592,11 @@ f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
 ax.plot(decomp.wl, f_total, 'k', label='observed')
+ax.plot(decomp.wl, f_res, 'm', label='residual')
 ax.plot(decomp.wl, f_disk, 'b', label='disk model')
 ax.plot(decomp.wl, f_disk_orig, 'b:', label='original disk')
 ax.plot(decomp.wl, f_bulge, 'r', label='bulge model')
 ax.plot(decomp.wl, f_bulge_orig, 'r:', label='original bulge')
-ax.plot(decomp.wl, f_res, 'm', label='residual')
 ax.set_xlim(decomp.wl.min(), decomp.wl.max())
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xticklabels([])
@@ -571,11 +615,11 @@ f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
 ax.plot(decomp.wl, f_total, 'k', label='observed')
+ax.plot(decomp.wl, f_res, 'm', label='residual')
 ax.plot(decomp.wl, f_disk, 'b', label='disk model')
 ax.plot(decomp.wl, f_disk_orig, 'b:', label='original disk')
 ax.plot(decomp.wl, f_bulge, 'r', label='bulge model')
 ax.plot(decomp.wl, f_bulge_orig, 'r:', label='original bulge')
-ax.plot(decomp.wl, f_res, 'm', label='residual')
 ax.set_xlim(decomp.wl.min(), decomp.wl.max())
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xticklabels([])
@@ -586,10 +630,12 @@ ax.legend()
 ax = plt.subplot(gs[3])
 I_e = fitted_params['I_e'] / bulge_flux
 I_0 = fitted_params['I_0'] / disk_flux
+orig_I_e = original_params['I_e']
+orig_I_0 = original_params['I_0']
 vmax = max(I_e.max(), I_0.max()) + 1.0
-ax.hlines(true_params['I_0'], decomp.wl.min(), decomp.wl.max(), linestyles=':', colors='b', label=r'Original $I_0$')
+ax.plot(decomp.wl, orig_I_0, 'b:', label=r'Original $I_0$')
+ax.plot(decomp.wl, orig_I_e, 'r:', label=r'Original $I_e$')
 ax.plot(decomp.wl, I_0, 'b', label=r'Fitted $I_0$')
-ax.hlines(true_params['I_e'], decomp.wl.min(), decomp.wl.max(), linestyles=':', colors='r', label=r'Original $I_e$')
 ax.plot(decomp.wl, I_e, 'r', label=r'Fitted $I_e$')
 ax.set_ylim(0.0, vmax)
 ax.set_xlim(decomp.wl.min(), decomp.wl.max())
