@@ -148,11 +148,11 @@ def create_model_images(model, shape, PSF, nproc=None):
 ################################################################################
 def bulge_function(I_e, r_e, n, PA, ell):
     bulge = function_description('Sersic', name='bulge')
-    bulge.I_e.setValue(I_e, [1e-33, 2.0*I_e])
-    bulge.r_e.setValue(r_e, [1e-33, 2.0*r_e])
+    bulge.I_e.setValue(I_e, [1e-33, 5.0*I_e])
+    bulge.r_e.setValue(r_e, [1e-33, 5.0*r_e])
     bulge.n.setValue(n, [1.0,5.0])
     bulge.PA.setValue(PA, [PA - 30.0, PA + 30.0])
-    bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    bulge.ell.setValue(ell, [ell - 0.25, ell + 0.25])
     return bulge
 ################################################################################
 
@@ -160,10 +160,10 @@ def bulge_function(I_e, r_e, n, PA, ell):
 ################################################################################
 def disk_function(I_0, h, PA, ell):
     disk = function_description('Exponential', name='disk')
-    disk.I_0.setValue(I_0, [1e-33, 2.0*I_0])
-    disk.h.setValue(h, [1e-33, 2.0*h])
+    disk.I_0.setValue(I_0, [1e-33, 5.0*I_0])
+    disk.h.setValue(h, [1e-33, 5.0*h])
     disk.PA.setValue(PA, [PA - 30.0, PA + 30.0])
-    disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    disk.ell.setValue(ell, [ell - 0.25, ell + 0.25])
     return disk
 ################################################################################
 
