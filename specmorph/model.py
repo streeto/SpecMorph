@@ -64,7 +64,7 @@ def fix_PA_ell(PA, ell):
 
 
 ################################################################################
-def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
+def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, use_cash_statitics=False):
     '''
     Doc me!
     '''
@@ -96,7 +96,8 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
     disk_model.bulge.ell.fixed=True
     logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(disk_model)))
     bdmodel, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF,
-                                         mode='DE', quiet=quiet, nproc=nproc)
+                                         mode='DE', quiet=quiet, nproc=nproc,
+                                         use_cash_statistics=use_cash_statitics)
     pa, ell = fix_PA_ell(bdmodel.disk.PA.value, bdmodel.disk.ell.value)
     bdmodel.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
     bdmodel.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
@@ -116,7 +117,8 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
     bdmodel.bulge.n.fixed=False
     logger.debug('First guess model:\n%s\n' % str(bdmodel))
     bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
-                                         mode='DE', quiet=quiet, nproc=nproc)
+                                         mode='DE', quiet=quiet, nproc=nproc,
+                                         use_cash_statistics=use_cash_statitics)
     pa, ell = fix_PA_ell(bdmodel.bulge.PA.value, bdmodel.bulge.ell.value)
     bdmodel.bulge.PA.setValue(pa, [pa - 30.0, pa + 30.0])
     bdmodel.bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
@@ -127,7 +129,8 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0):
 
     logger.debug('Second guess model:\n%s\n' % str(bdmodel))
     bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
-                                         mode='NM', quiet=quiet, nproc=nproc)
+                                         mode='NM', quiet=quiet, nproc=nproc,
+                                         use_cash_statistics=use_cash_statitics)
     logger.info('Second guess - converged: %s; chi2 = %.2f' % (converged, chi2))
     logger.debug('Final model:\n%s\n' % str(bdmodel))
     return bdmodel
