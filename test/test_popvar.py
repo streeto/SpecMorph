@@ -146,6 +146,20 @@ def linear_model(model_0, a, wl):
     return [BDModel.fromParamVector(k) for k in p]
 ################################################################################
 
+
+################################################################################
+def sfh_tau(r):
+    return 2.0e9 + r/5.0 * 1.0e9
+################################################################################
+
+
+################################################################################
+def get_bulge_distance(model, shape):
+    pa = model.bulge.PA.value * np.pi / 180.0
+    ba = 1.0 - model.bulge.ell.value
+    return distance(shape, model.x0.value, model.x0.value, pa, ba)
+################################################################################
+
         
 ################################################################################
 ##########
@@ -161,46 +175,44 @@ logger.info('Loading base %s', path.basename(args.baseFile))
 t1 = time.clock()
 base = StarlightBase(args.baseFile, args.baseDir)
 l_ssp = np.arange(base.l_ssp.min(), base.l_ssp.max(), 2.0)
+f_ssp = base.f_sspResam(l_ssp)
 logger.info('Took %.2f seconds to read the base (%d files)' % (time.clock() - t1, base.sspfile.size))
-wl_norm_window = (base.l_ssp < 5680.0) & (base.l_ssp > 5590.0)
+wl_norm_window = (l_ssp < 5680.0) & (l_ssp > 5590.0)
 
 logger.info('Computing synthetic SFH and their spectra.')
-bulge_sfh = SyntheticSFH(base.ageBase)
-bulge_sfh.addExp(14e9, 2.0e9, 1.0)
-bulge_flux = (base.f_ssp * bulge_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
-bulge_flux /= np.median(bulge_flux[wl_norm_window])
-bulge_flux = spec_resample(base.l_ssp, l_ssp, bulge_flux)
+# bulge_sfh = SyntheticSFH(base.ageBase)
+# bulge_sfh.addExp(14e9, 2.0e9, 1.0)
+# bulge_flux = (f_ssp * bulge_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
+# bulge_flux /= np.median(bulge_flux[wl_norm_window])
 
-disk_sfh = SyntheticSFH(base.ageBase)
-#disk_sfh.addExp(10e9, 2.0e9, 1.0)
-disk_sfh.addSquare(0.0, 14e9, 1.0)
-disk_flux = (base.f_ssp * disk_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
-disk_flux /= np.median(disk_flux[wl_norm_window])
-disk_flux = spec_resample(base.l_ssp, l_ssp, disk_flux)
+# disk_sfh = SyntheticSFH(base.ageBase)
+# disk_sfh.addSquare(0.0, 14e9, 1.0)
+# disk_flux = (f_ssp * disk_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
+# disk_flux /= np.median(disk_flux[wl_norm_window])
 
-logger.debug('Plotting SFH.')
-fig = plt.figure(figsize=(8,6))
-gs = plt.GridSpec(2, 1, height_ratios=[1.0, 1.0])
-ax = plt.subplot(gs[0])
-age_Gyr = base.ageBase / 1e9
-age_bin_edges = 10**(bin_edges(np.log10(base.ageBase)))
-dt = age_bin_edges[1:] - age_bin_edges[:-1]                     
-ax.plot(age_Gyr, bulge_sfh.massVector() / dt, 'r-', label='bulge')
-ax.plot(age_Gyr, disk_sfh.massVector() / dt, 'b-', label='disk')
-ax.set_xlim(age_Gyr.min(), age_Gyr.max())
-ax.set_xlabel(r'Age [Gyr]')
-ax.set_ylabel(r'SFR (weight)')
-ax.set_title(r'Star formation history')
-ax.legend(loc='upper left')
-
-ax = plt.subplot(gs[1])
-ax.plot(l_ssp, bulge_flux, 'r-')
-ax.plot(l_ssp, disk_flux, 'b-')
-ax.set_xlabel(r'Wavelength [$\AA$]')
-ax.set_ylabel(r'Relative flux')
-ax.set_title(r'Spectra')
-gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
-pdf.savefig()
+# logger.debug('Plotting SFH.')
+# fig = plt.figure(figsize=(8,6))
+# gs = plt.GridSpec(2, 1, height_ratios=[1.0, 1.0])
+# ax = plt.subplot(gs[0])
+# age_Gyr = base.ageBase / 1e9
+# age_bin_edges = 10**(bin_edges(np.log10(base.ageBase)))
+# dt = age_bin_edges[1:] - age_bin_edges[:-1]                     
+# ax.plot(age_Gyr, bulge_sfh.massVector() / dt, 'r-', label='bulge')
+# ax.plot(age_Gyr, disk_sfh.massVector() / dt, 'b-', label='disk')
+# ax.set_xlim(age_Gyr.min(), age_Gyr.max())
+# ax.set_xlabel(r'Age [Gyr]')
+# ax.set_ylabel(r'SFR (weight)')
+# ax.set_title(r'Star formation history')
+# ax.legend(loc='upper left')
+# 
+# ax = plt.subplot(gs[1])
+# ax.plot(l_ssp, bulge_flux, 'r-')
+# ax.plot(l_ssp, disk_flux, 'b-')
+# ax.set_xlabel(r'Wavelength [$\AA$]')
+# ax.set_ylabel(r'Relative flux')
+# ax.set_title(r'Spectra')
+# gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+# pdf.savefig()
 
 ################################################################################
 ##########
@@ -210,8 +222,9 @@ pdf.savefig()
 
 logger.info('Creating original B-D models.')
 norm_model = get_model(args.trueModel, with_default=True)
+norm_params = np.array(norm_model.getParams(), dtype=norm_model.dtype)
 model_deriv = np.array(get_model(args.trueModelDeriv).getParams(), dtype=norm_model.dtype)
-original_models = linear_model(norm_model, model_deriv, l_ssp)
+print model_deriv, model_deriv.dtype
 logger.info('Original model at normalization window:\n%s\n' % str(norm_model))
 
 imshape = (72,77)
@@ -225,51 +238,66 @@ flux_unit = 1e-16
 logger.info('Creating original PSF (FWHM = %.2f ")' % args.truePsfFWHM)
 original_PSF = gaussian_psf(args.truePsfFWHM, size=15)
 
-logger.info('Creating model images.')
-bulge_image = np.ma.empty(ifsshape)
-disk_image = np.ma.empty(ifsshape)
-for i, model in enumerate(original_models):
-    bulge_image[i], disk_image[i] = create_model_images(model, imshape, original_PSF)
-bulge_image[:,flagged] = np.ma.masked
-disk_image[:,flagged] = np.ma.masked
-model_image = bulge_image + disk_image
+bulge_r = get_bulge_distance(norm_model, imshape)
+
+logger.info('Creating bulge spectra (tau proportional to distance).')
+bulge_image, disk_image = create_model_images(norm_model, imshape, original_PSF)
+bulge_image[flagged] = np.ma.masked
+disk_image[flagged] = np.ma.masked
+full_image = bulge_image + disk_image
+bulge_ifs = np.ma.empty(ifsshape)
+for i in xrange(imshape[0]):
+    for j in xrange(imshape[1]):
+        r = bulge_r[i,j]
+        tau = sfh_tau(r)
+        bulge_sfh = SyntheticSFH(base.ageBase)
+        bulge_sfh.addExp(14e9, tau, 1.0)
+        bulge_spec = (f_ssp * bulge_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
+        bulge_spec /= np.median(bulge_spec[wl_norm_window])
+        bulge_ifs[:, i, j] =  bulge_spec * (flux_unit * bulge_image[np.newaxis, i, j])
 #model_noise = model_image * noise
 
+logger.info('Creating disk spectra.')
+disk_sfh = SyntheticSFH(base.ageBase)
+disk_sfh.addSquare(0.0, 14e9, 1.0)
+disk_spec = (f_ssp * disk_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
+disk_spec /= np.median(disk_spec[wl_norm_window])
+
 logger.info('Creating IFS.')
-bulge_spectra = bulge_image * (flux_unit * bulge_flux[..., np.newaxis, np.newaxis]) 
-disk_spectra = disk_image * (flux_unit * disk_flux[..., np.newaxis, np.newaxis]) 
-full_spectra = bulge_spectra + disk_spectra
-full_noise = full_spectra * noise
+disk_ifs = disk_spec[..., np.newaxis, np.newaxis] * (flux_unit * disk_image)
+full_ifs = bulge_ifs + disk_ifs
+full_ifs_noise = full_ifs * noise
 
 # FIXME: How to add gaussian noise to spectra?
 logger.info('Adding gaussian noise to IFS.')
-tmp_noise = np.zeros(full_spectra.shape)
+tmp_noise = np.zeros(ifsshape)
 for i in xrange(ifsshape[0]):
     for j in xrange(ifsshape[1]):
         for k in xrange(ifsshape[2]):
-            tmp_noise[i,j,k] = np.random.normal(0.0, full_noise.data[i,j,k])
-full_spectra += tmp_noise
+            if flagged[j,k]: continue
+            tmp_noise[i,j,k] = np.random.normal(0.0, full_ifs_noise.data[i,j,k])
+full_ifs += tmp_noise
 
 logger.debug('Plotting original model.')
-index_norm = find_nearest_index(l_ssp, 5635.0)
-vmin = np.log10(model_image.min())
-vmax = np.log10(model_image.max())
+#index_norm = find_nearest_index(l_ssp, 5635.0)
+vmin = np.log10(full_image.min())
+vmax = np.log10(full_image.max())
 fig = plt.figure(figsize=(8, 6))
 gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
 ax = plt.subplot(gs[0,0])
-ax.imshow(np.log10(model_image[index_norm]), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(full_image), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Total')
 
 ax = plt.subplot(gs[0,1])
-ax.imshow(np.log10(bulge_image[index_norm]), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(bulge_image), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Bulge')
 
 ax = plt.subplot(gs[0,2])
-ax.imshow(np.log10(disk_image[index_norm]), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(disk_image), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Disk')
@@ -277,10 +305,10 @@ ax.set_title(r'Disk')
 ax = plt.subplot(gs[1,:])
 bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
-pa, ba = ellipse_params(model_image[index_norm], norm_x0, norm_y0)
-mr = radialProfile(np.log10(model_image[index_norm]), bins, norm_x0, norm_y0, pa, ba)
-br = radialProfile(np.log10(bulge_image[index_norm]), bins, norm_x0, norm_y0, pa, ba)
-dr = radialProfile(np.log10(disk_image[index_norm]), bins, norm_x0, norm_y0, pa, ba)
+pa, ba = ellipse_params(full_image, norm_x0, norm_y0)
+mr = radialProfile(np.log10(full_image), bins, norm_x0, norm_y0, pa, ba)
+br = radialProfile(np.log10(bulge_image), bins, norm_x0, norm_y0, pa, ba)
+dr = radialProfile(np.log10(disk_image), bins, norm_x0, norm_y0, pa, ba)
 ax.plot(bins_c, mr, 'k-', label='Total')
 ax.plot(bins_c, br, 'r-', label='Bulge')
 ax.plot(bins_c, dr, 'b-', label='Disk')
@@ -310,7 +338,7 @@ logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
 logger.info('Model using PSF FWHM = %.2f ".' % args.modelPsfFWHM)
 decomp.setSynthPSF(FWHM=args.modelPsfFWHM, size=9)
-decomp.loadData(l_ssp, full_spectra, full_noise, np.zeros_like(full_spectra, dtype='bool'))
+decomp.loadData(l_ssp, full_ifs, full_ifs, np.zeros_like(full_ifs, dtype='bool'))
 
 swll, swlu = 5590.0, 5680.0
 sl1 = find_nearest_index(decomp.wl, swll)
@@ -329,7 +357,7 @@ vmax = np.log10(qSignal.max())
 fig = plt.figure(figsize=(8, 6))
 gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
 ax = plt.subplot(gs[0,0])
-ax.imshow(np.log10(model_image[index_norm]), vmin=vmin, vmax=vmax)
+ax.imshow(np.log10(qSignal), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Total')
@@ -392,15 +420,13 @@ fitted_params = np.array([m.getParams() for m in fitted_models], dtype=fitted_mo
 logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 
 logger.info('Computing model spectra.')
-fitted_bulge_spectra, fitted_disk_spectra = decomp.getModelSpectra(fitted_models)
+fitted_bulge_ifs, fitted_disk_ifs = decomp.getModelSpectra(fitted_models)
 
 logger.info('Average fit results:')
-original_params = np.array([m.getParams() for m in original_models], dtype=original_models[0].dtype)
 print_params = ('I_e', 'r_e', 'n', 'PA_b', 'ell_b', 'I_0', 'h', 'PA_d', 'ell_d', )
 for p in fitted_params.dtype.names:
     if p not in print_params: continue
-    delta_p_norm = (fitted_params[p] - original_params[p]) / original_params[p]
-    logger.info('    delta %s (norm.) = %.3f +/- %.3f' % (p, np.mean(delta_p_norm), np.std(delta_p_norm)))
+    logger.info('    %s = %.3f +/- %.3f' % (p, np.mean(fitted_params[p]), np.std(fitted_params[p])))
 
 
 ################################################################################
@@ -487,7 +513,7 @@ gs = plt.GridSpec(n_rows, n_cols)
 for i, colname in enumerate(colnames):
     if colname is None: continue
     ax = plt.subplot(gs[i])
-    y_orig = func[colname](original_params[colname])
+    y_orig = np.ones_like(decomp.wl) * func[colname](norm_params[colname])
     y = func[colname](fitted_params[colname])
     y_1p = func[colname](first_pass_params[colname])
     ax.plot(decomp.wl, y_orig, ':k')
@@ -523,9 +549,9 @@ l_range = np.where((decomp.wl > 5590.0) & (decomp.wl < 5680.0))[0]
 l1 = l_range[0]
 l2 = l_range[-1]
 
-bulge_im = np.median(fitted_bulge_spectra[l1:l2], axis=0)
+bulge_im = np.median(fitted_bulge_ifs[l1:l2], axis=0)
 
-disk_im = np.median(fitted_disk_spectra[l1:l2], axis=0)
+disk_im = np.median(fitted_disk_ifs[l1:l2], axis=0)
 
 total_im = np.median(decomp.flux[l1:l2], axis=0)
 
@@ -586,10 +612,10 @@ ax = plt.subplot(gs[1])
 xx = np.round(initial_model.x0.value)
 yy = np.round(initial_model.y0.value)
 f_total = decomp.flux[:,yy,xx]
-f_disk = fitted_disk_spectra[:,yy,xx]
-f_disk_orig = disk_spectra[:,yy,xx]
-f_bulge = fitted_bulge_spectra[:,yy,xx]
-f_bulge_orig = bulge_spectra[:,yy,xx]
+f_disk = fitted_disk_ifs[:,yy,xx]
+f_disk_orig = disk_ifs[:,yy,xx]
+f_bulge = fitted_bulge_ifs[:,yy,xx]
+f_bulge_orig = bulge_ifs[:,yy,xx]
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
@@ -609,10 +635,10 @@ ax.legend()
 ax = plt.subplot(gs[2])
 xx = np.ceil(initial_model.x0.value + initial_model.bulge.r_e.value)
 f_total = decomp.flux[:,yy,xx]
-f_disk = fitted_disk_spectra[:,yy,xx]
-f_disk_orig = disk_spectra[:,yy,xx]
-f_bulge = fitted_bulge_spectra[:,yy,xx]
-f_bulge_orig = bulge_spectra[:,yy,xx]
+f_disk = fitted_disk_ifs[:,yy,xx]
+f_disk_orig = disk_ifs[:,yy,xx]
+f_bulge = fitted_bulge_ifs[:,yy,xx]
+f_bulge_orig = bulge_ifs[:,yy,xx]
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
@@ -630,10 +656,10 @@ ax.set_title(r'Spectra at $R = r_e$ ($%.1f\,arcsec$)' % initial_model.bulge.r_e.
 ax.legend()
 
 ax = plt.subplot(gs[3])
-I_e = fitted_params['I_e'] / bulge_flux
-I_0 = fitted_params['I_0'] / disk_flux
-orig_I_e = original_params['I_e']
-orig_I_0 = original_params['I_0']
+I_e = fitted_params['I_e'] / bulge_spec
+I_0 = fitted_params['I_0'] / disk_spec
+orig_I_e = np.ones_like(decomp.wl) * norm_params['I_e']
+orig_I_0 = np.ones_like(decomp.wl) * norm_params['I_0']
 vmax = max(I_e.max(), I_0.max()) + 1.0
 ax.plot(decomp.wl, orig_I_0, 'b:', label=r'Original $I_0$')
 ax.plot(decomp.wl, orig_I_e, 'r:', label=r'Original $I_e$')
@@ -686,8 +712,8 @@ for i in xrange(N_cols):
         wl = decomp.wl[l]
         x0 = fitted_params['x0'][l]
         y0 = fitted_params['y0'][l]
-        bulge_im = fitted_bulge_spectra[l]
-        disk_im = fitted_disk_spectra[l]
+        bulge_im = fitted_bulge_ifs[l]
+        disk_im = fitted_disk_ifs[l]
         total_im = decomp.flux[l]
         mask = ~np.isnan(total_im)
         pa, ba = ellipse_params(total_im, x0, y0)
