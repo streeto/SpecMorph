@@ -8,6 +8,7 @@ from specmorph.util import logger
 from specmorph.califa import CALIFADecomposer
 from specmorph.califa.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
 from specmorph.model import BDModel, bd_initial_model, smooth_models
+from specmorph.io import save_array, save_compound_array
 
 from tables import openFile, Filters
 import numpy as np
@@ -15,7 +16,6 @@ import numpy as np
 from os import path, unlink
 import argparse
 import time
-from tables.atom import Atom
 import pyfits
 import atpy
 
@@ -90,30 +90,6 @@ def save_qbick_planes(planes, K, filename):
     hdulist = pyfits.HDUList()
     hdulist.append(phdu)
     hdulist.writeto(filename, clobber=True)
-################################################################################
-
-
-################################################################################
-def save_compound_array(db, parent, name, data, overwrite=False):
-    if overwrite and name in parent:
-        logger.warn('Removing existing group %s' % name)
-        parent._f_getChild(name)._f_remove(recursive=True)
-    grp = db.createGroup(parent, name)
-    # HACK: pytables does not support compound dtypes.
-    for field in data.dtype.names:
-        save_array(db, grp, field, data[field], overwrite)
-################################################################################
-
-    
-################################################################################
-def save_array(db, parent, name, data, overwrite=False):
-    if overwrite and name in parent:
-        logger.warn('Removing existing array %s' % name)
-        parent._f_getChild(name)._f_remove()
-    ca = db.createCArray(parent, name, Atom.from_dtype(data.dtype), data.shape, filters=Filters(1, 'blosc'))
-    if isinstance(data, np.ma.MaskedArray):
-        data = data.filled()
-    ca[...] = data
 ################################################################################
 
 
