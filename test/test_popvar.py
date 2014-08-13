@@ -154,9 +154,8 @@ def sfh_tau(r):
 
 ################################################################################
 def get_bulge_distance(model, shape):
-    pa = model.bulge.PA.value * np.pi / 180.0
-    ba = 1.0 - model.bulge.ell.value
-    return distance(shape, model.x0.value, model.x0.value, pa, ba)
+    return distance(shape, model.x0.value, model.x0.value,
+                    model.bulge.PA.value, model.bulge.ell.value)
 ################################################################################
 
         
@@ -304,7 +303,9 @@ ax.set_title(r'Disk')
 ax = plt.subplot(gs[1,:])
 bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
-pa, ba = ellipse_params(full_image, norm_x0, norm_y0)
+pa, ell = ellipse_params(full_image, norm_x0, norm_y0)
+pa = (90.0 + pa) * np.pi / 180.0
+ba = 1.0 - ell
 mr = radialProfile(np.log10(full_image), bins, norm_x0, norm_y0, pa, ba)
 br = radialProfile(np.log10(bulge_image), bins, norm_x0, norm_y0, pa, ba)
 dr = radialProfile(np.log10(disk_image), bins, norm_x0, norm_y0, pa, ba)
@@ -378,7 +379,9 @@ bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
 y0 = initial_model.y0.value
 x0 = initial_model.x0.value
-pa_i, ba_i = ellipse_params(qSignal, x0, y0)
+pa_i, ell_i = ellipse_params(qSignal, x0, y0)
+pa_i = (90.0 + pa_i) * np.pi / 180.0
+ba_i = 1.0 - ell
 mr = radialProfile(np.log10(qSignal), bins, x0, y0, pa_i, ba_i)
 br = radialProfile(np.log10(bulge_image), bins, x0, y0, pa_i, ba_i)
 dr = radialProfile(np.log10(disk_image), bins, x0, y0, pa_i, ba_i)
@@ -715,7 +718,9 @@ for i in xrange(N_cols):
         disk_im = fitted_disk_ifs[l]
         total_im = decomp.flux[l]
         mask = ~np.isnan(total_im)
-        pa, ba = ellipse_params(total_im, x0, y0)
+        pa, ell = ellipse_params(total_im, x0, y0)
+        pa = (90.0 + pa) * np.pi / 180.0
+        ba = 1.0 - ell
         r__yx = distance(total_im.shape, x0, y0, pa, ba)
         bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
         disk_r = radialProfile(disk_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
