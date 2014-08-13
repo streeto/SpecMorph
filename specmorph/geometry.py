@@ -204,3 +204,52 @@ def distance(shape, x0=0.0, y0=0.0, pa=0.0, ba=1.0):
     A3 = sin_th ** 2 + a_b ** 2 * cos_th ** 2
 
     return np.sqrt(A1 * x2 + A2 * xy + A3 * y2)
+
+
+def fix_PA_ell(PA, ell):
+    '''
+    Force position angle (P.A.) into (0, 180) range,
+    and ellipticity (:math:``1 - b/a``) to be positive.
+    
+    Assuming the P.A. describes the orientation of an
+    axis-symmetric object, if :math:``P.A. > 180``, then
+    :math:``P.A._{fix} = P.A. - 180`` describes the same
+    orientation.
+    
+    When ellipticity is negative, that means the semimajor
+    and semiminor axes are swapped. In this case,
+    :math:``e_{fix} = -e / (1 - e)``, and  P.A. is rotated
+    90 degrees (keeping it in the correct range).
+    
+    Parameters
+    ----------
+    PA : float
+        Position angle in degrees.
+        
+    ell : float
+        Ellipticity.
+    
+    Returns
+    -------
+    PA : float
+        Position angle in degrees.
+    
+    ell : float
+        Ellipticity.
+    '''
+    inv_ell = lambda e: -e / (1 - e)
+
+    PA %= 360.0
+    if PA < 0.0:
+        PA + 360.0
+    elif PA > 180.0:
+        PA -= 180.0
+    
+    if ell < 0.0:
+        if PA > 90.0:
+            return PA - 90.0, inv_ell(ell)
+        else:
+            return PA + 90.0, inv_ell(ell)
+    else:
+        return PA, ell
+

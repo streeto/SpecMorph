@@ -4,7 +4,7 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-from .geometry import ellipse_params, distance, r50
+from .geometry import ellipse_params, distance, r50, fix_PA_ell
 from .fitting import fit_image, model_image
 from .util import logger
 
@@ -12,56 +12,6 @@ from imfit import SimpleModelDescription, function_description, parse_config_fil
 import numpy as np
 
 __all__ = ['BDModel', 'bd_initial_model', 'create_model_images']
-
-################################################################################
-def fix_PA_ell(PA, ell):
-    '''
-    Force position angle (P.A.) into (0, 180) range,
-    and ellipticity (:math:``1 - b/a``) to be positive.
-    
-    Assuming the P.A. describes the orientation of an
-    axis-symmetric object, if :math:``P.A. > 180``, then
-    :math:``P.A._{fix} = P.A. - 180`` describes the same
-    orientation.
-    
-    When ellipticity is negative, that means the semimajor
-    and semiminor axes are swapped. In this case,
-    :math:``e_{fix} = -e / (1 - e)``, and  P.A. is rotated
-    90 degrees (keeping it in the correct range).
-    
-    Parameters
-    ----------
-    PA : float
-        Position angle in degrees.
-        
-    ell : float
-        Ellipticity.
-    
-    Returns
-    -------
-    PA : float
-        Position angle in degrees.
-    
-    ell : float
-        Ellipticity.
-    '''
-    inv_ell = lambda e: -e / (1 - e)
-
-    PA %= 360.0
-    if PA < 0.0:
-        PA + 360.0
-    elif PA > 180.0:
-        PA -= 180.0
-    
-    if ell < 0.0:
-        if PA > 90.0:
-            return PA - 90.0, inv_ell(ell)
-        else:
-            return PA + 90.0, inv_ell(ell)
-    else:
-        return PA, ell
-################################################################################
-
 
 ################################################################################
 def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, use_cash_statitics=False):
