@@ -100,7 +100,7 @@ def r50(X, r, r_max=None):
 
 def ellipse_params(image, x0=0.0, y0=0.0):
     '''
-    Estimate ellipticity and orientation of the galaxy using the
+    Estimate ellipticity and position angle of the galaxy using the
     "Stokes parameters", as described in:
     http://adsabs.harvard.edu/abs/2002AJ....123..485S
     The image used is ``qSignal``.
@@ -122,12 +122,12 @@ def ellipse_params(image, x0=0.0, y0=0.0):
     Returns
     -------
     pa : float
-        Position angle in radians, counter-clockwise relative
-        to the positive X axis.
+        Position angle in degrees, counter-clockwise relative
+        to the positive Y axis.
     
-    ba : float
-        Ellipticity, defined as the ratio between the semiminor
-        axis and the semimajor axis (:math:`b/a`).
+    ell : float
+        Ellipticity, defined as :math:`1 - b/a`, with :math:`b/a`
+        being the ratio between semiminor and semimajor axes.
     '''
     yy, xx = np.indices(image.shape)
     y = yy - y0
@@ -154,10 +154,14 @@ def ellipse_params(image, x0=0.0, y0=0.0):
     # Should be the same as ba
     #ba_ = (np.cos(2*pa) - Q) / (np.cos(2*pa) + Q)
     
-    return pa, ba
+    # PA is measured degrees from +y axis.
+    pa = 90.0 - pa * 180.0 / np.pi
+    ell = 1 - ba
+    
+    return fix_PA_ell(pa, ell)
 
 
-def distance(shape, x0=0.0, y0=0.0, pa=0.0, ba=1.0):
+def distance(shape, x0=0.0, y0=0.0, pa=0.0, ell=0.0):
     '''
     Return an image (:class:`numpy.ndarray`)
     of the distance from the center ``(x0, y0)`` in pixels,
@@ -175,12 +179,12 @@ def distance(shape, x0=0.0, y0=0.0, pa=0.0, ba=1.0):
         Y coordinate of the origin. Defaults to ``0.0``.
     
     pa : float, optional
-        Position angle in radians, counter-clockwise relative
-        to the positive X axis.
+        Position angle in degrees, counter-clockwise relative
+        to the positive Y axis.
     
-    ba : float, optional
-        Ellipticity, defined as the ratio between the semiminor
-        axis and the semimajor axis (:math:`b/a`).
+    ell : float, optional
+        Ellipticity, defined as :math:`1 - b/a`, with :math:`b/a`
+        being the ratio between semiminor and semimajor axes.
 
     Returns
     -------
@@ -195,7 +199,10 @@ def distance(shape, x0=0.0, y0=0.0, pa=0.0, ba=1.0):
     y2 = y**2
     xy = x * y
 
-    a_b = 1.0/ba
+    # Angles here are in radians from the +x axis.
+    pa = (90.0 + pa) * np.pi / 180.0
+    a_b = 1.0 / (1.0 - ell)
+    
     cos_th = np.cos(pa)
     sin_th = np.sin(pa)
 

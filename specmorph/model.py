@@ -20,13 +20,8 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, u
     '''
     if x0 is None: x0 = image.shape[1] / 2.0
     if y0 is None: y0 = image.shape[0] / 2.0
-    pa, ba = ellipse_params(image, x0, y0)
-    ell = 1.0 - ba
-    pa = pa * 180.0 / np.pi
-    pa, ell = fix_PA_ell(pa, ell)
-    if pa < 0.0:
-        pa += 180.0
-    r = distance(image.shape, x0, y0, pa, ba)
+    pa, ell = ellipse_params(image, x0, y0)
+    r = distance(image.shape, x0, y0, pa, ell)
     r = np.ma.array(r, mask=image.mask)
     image_r50 = r50(image, r)
     disk_begins = 1.0 * image_r50
