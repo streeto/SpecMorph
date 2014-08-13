@@ -12,7 +12,6 @@ from specmorph.geometry import distance, ellipse_params
 from specmorph.util import logger, find_nearest_index
 
 from pystarlight.util.base import StarlightBase
-from pystarlight.util.StarlightUtils import spec_resample, bin_edges
 from pycasso.util import radialProfile
 from imfit import gaussian_psf
 import numpy as np
@@ -338,7 +337,7 @@ logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
 logger.info('Model using PSF FWHM = %.2f ".' % args.modelPsfFWHM)
 decomp.setSynthPSF(FWHM=args.modelPsfFWHM, size=9)
-decomp.loadData(l_ssp, full_ifs, full_ifs, np.zeros_like(full_ifs, dtype='bool'))
+decomp.loadData(l_ssp, full_ifs, full_ifs_noise, np.zeros_like(full_ifs, dtype='bool'))
 
 swll, swlu = 5590.0, 5680.0
 sl1 = find_nearest_index(decomp.wl, swll)
