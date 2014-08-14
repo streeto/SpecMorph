@@ -143,7 +143,7 @@ Ny_psf = PSF.shape[0]
 Nx_psf = PSF.shape[1]
 imshape_pad = (args.Ny + 2 * Ny_psf, args.Nx + 2 * Nx_psf)
 ifsshape_pad = (len(l_ssp),) + imshape_pad
-# Fix the model center.
+# Fix the model center for padded images.
 norm_y0 = norm_model.y0.value + Ny_psf
 norm_x0 = norm_model.x0.value + Nx_psf
 norm_model.y0.setValue(norm_y0)
@@ -184,9 +184,20 @@ logger.info('Convolving IFS with PSF.')
 imshape = (args.Ny, args.Nx)
 ifsshape = (len(l_ssp),) + imshape
 flagged = distance(imshape, norm_x0, norm_y0) > args.flagRadius
-full_ifs = np.empty(ifsshape)
+bulge_ifs = np.empty(ifsshape)
+disk_ifs = np.empty(ifsshape)
 for l in xrange(len(l_ssp)):
-    full_ifs[l] = convolve_image(full_ifs_pad[l], PSF)[Ny_psf:-Ny_psf, Nx_psf:-Nx_psf]
+    bulge_ifs[l] = convolve_image(bulge_ifs_pad[l], PSF)[Ny_psf:-Ny_psf, Nx_psf:-Nx_psf]
+    disk_ifs[l] = convolve_image(disk_ifs_pad[l], PSF)[Ny_psf:-Ny_psf, Nx_psf:-Nx_psf]
+
+# Convolution is linear.
+full_ifs = bulge_ifs + disk_ifs
+
+# We removed the PSF padding, fix the center of the model again.
+norm_y0 = norm_model.y0.value - Ny_psf
+norm_x0 = norm_model.x0.value - Nx_psf
+norm_model.y0.setValue(norm_y0)
+norm_model.x0.setValue(norm_x0)
 
 # FIXME: How to add gaussian noise to spectra?
 logger.info('Adding gaussian noise to IFS.')
@@ -219,8 +230,10 @@ except:
 save_array(db, grp, 'bulge_image', bulge_image_pad[Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
 save_array(db, grp, 'disk_image', disk_image_pad[Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
 save_array(db, grp, 'wl', l_ssp, args.overwrite)
-save_array(db, grp, 'bulge_ifs', bulge_ifs_pad[:, Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
-save_array(db, grp, 'disk_ifs', disk_ifs_pad[:, Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
+save_array(db, grp, 'bulge_ifs_nopsf', bulge_ifs_pad[:, Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
+save_array(db, grp, 'bulge_ifs', bulge_ifs, args.overwrite)
+save_array(db, grp, 'disk_ifs_nopsf', disk_ifs_pad[:, Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
+save_array(db, grp, 'disk_ifs', disk_ifs, args.overwrite)
 save_array(db, grp, 'full_ifs', full_ifs, args.overwrite)
 save_array(db, grp, 'full_ifs_noise', full_ifs_noise, args.overwrite)
 save_array(db, grp, 'psf', PSF, args.overwrite)

@@ -138,15 +138,19 @@ class IFSDecomposer(object):
         return models
     
     
-    def getModelSpectra(self, models, nproc=None):
+    def getModelSpectra(self, models, nproc=None, use_PSF=True):
         '''
         FIXME: generic number of components.
         '''
+        if use_PSF:
+            PSF = self.PSF
+        else:
+            PSF = None
         bulge = np.empty((len(models), self.N_y, self.N_x))
         disk = np.empty((len(models), self.N_y, self.N_x))
         shape = (self.N_y, self.N_x)
         for i, model in enumerate(models):
-            bulge[i] = model_image(model.getBulge(), shape, self.PSF, nproc) * self.flux_unit
-            disk[i] = model_image(model.getDisk(), shape, self.PSF, nproc) * self.flux_unit
+            bulge[i] = model_image(model.getBulge(), shape, PSF, nproc) * self.flux_unit
+            disk[i] = model_image(model.getDisk(), shape, PSF, nproc) * self.flux_unit
         return bulge, disk
 ################################################################################
