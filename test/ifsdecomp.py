@@ -5,8 +5,7 @@ Created on 30/05/2014
 '''
 
 
-from specmorph.model import bd_initial_model, create_model_images, smooth_models,\
-    BDModel
+from specmorph.model import bd_initial_model, create_model_images, smooth_models, BDModel
 from specmorph.decomposition import IFSDecomposer
 from specmorph.geometry import distance, ellipse_params
 from specmorph.util import logger, find_nearest_index
@@ -27,6 +26,8 @@ def parse_args():
     
     parser.add_argument('--db', dest='db', default='fake_ifs.h5',
                         help='Output HDF5 database path.')
+    parser.add_argument('--param-degree', dest='paramDegree', type=int, default=1,
+                        help='Degree of polynomial to fit morphology parameters.')
     parser.add_argument('--name', dest='galaxyName', default='default_galaxy',
                         help='Output HDF5 database path.')
     parser.add_argument('--plot', dest='plotFile', default='test.pdf',
@@ -288,8 +289,8 @@ first_pass_params = np.array([m.getParams() for m in first_pass_models], dtype=f
 first_pass_lambdas = decomp.wl[::100]
 logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
 
-logger.info('Smoothing parameters.')
-smoothed_models = smooth_models(first_pass_models, decomp.wl, degree=1)
+logger.info('Smoothing parameters with polynomial of degree %d.' % args.paramDegree)
+smoothed_models = smooth_models(first_pass_models, decomp.wl, degree=args.paramDegree)
 smoothed_params = np.array([m.getParams() for m in smoothed_models], dtype=smoothed_models[0].dtype)
         
 logger.info('Starting second pass modeling...')

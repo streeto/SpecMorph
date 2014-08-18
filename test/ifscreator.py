@@ -7,7 +7,7 @@ Created on 30/05/2014
 
 from specmorph.components import SyntheticSFH
 from specmorph.model import BDModel, create_model_images
-from specmorph.geometry import distance, fix_PA_ell
+from specmorph.geometry import distance
 from specmorph.util import logger
 
 from pystarlight.util.base import StarlightBase
@@ -149,11 +149,9 @@ norm_x0 = norm_model.x0.value + Nx_psf
 norm_model.y0.setValue(norm_y0)
 norm_model.x0.setValue(norm_x0)
 
-
 t1 = time.clock()
 logger.info('Creating bulge spectra (tau proportional to distance).')
 bulge_image_pad, disk_image_pad = create_model_images(norm_model, imshape_pad, PSF=None)
-full_image_pad = bulge_image_pad + disk_image_pad
 
 bulge_r = get_bulge_distance(imshape_pad, norm_model)
 bulge_ifs_pad = np.empty(ifsshape_pad)
@@ -168,7 +166,6 @@ for i in xrange(imshape_pad[0]):
         bulge_spec = (f_ssp * bulge_sfh.massVector()[:, np.newaxis]).sum(axis=1).sum(axis=0)
         bulge_spec /= np.median(bulge_spec[wl_norm_window])
         bulge_ifs_pad[:, i, j] =  bulge_spec * (args.fluxUnit * bulge_image_pad[np.newaxis, i, j])
-#model_noise = model_image * noise
 
 logger.info('Creating disk spectra.')
 disk_sfh = SyntheticSFH(base.ageBase)
