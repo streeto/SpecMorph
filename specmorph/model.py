@@ -120,7 +120,12 @@ def disk_function(I_0, h, PA, ell):
 def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
     flag_ok = (flags == 0) & (wl > 4500.0)
     from astropy.modeling import models, fitting
-    line = models.Polynomial1D(degree)
+    if degree == 0:
+        line = models.Polynomial1D(degree=1)
+        line.c1 = 0.0
+        line.c1.fixed = True
+    else:
+        line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
     param_fitted = fit(line, wl[flag_ok], param[flag_ok])
     return param_fitted(l_obs)
