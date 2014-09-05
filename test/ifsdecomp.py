@@ -34,6 +34,8 @@ def parse_args():
                         help='Plot to this file.')
     parser.add_argument('--psf-fwhm', dest='modelPsfFWHM', type=float, default=2.4,
                         help='PSF FWHM (arcseconds) used when modeling.')
+    parser.add_argument('--fix-structural', dest='fixStructural', action='store_true',
+                        help='Fix structural parameters in second pass.')
     parser.add_argument('--cache', dest='cacheModel', default=None,
                         help='Use the specified file as cached initial model.')
     
@@ -292,7 +294,8 @@ first_pass_lambdas = decomp.wl[::100]
 logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
 
 logger.info('Smoothing parameters with polynomial of degree %d.' % args.paramDegree)
-smoothed_models = smooth_models(first_pass_models, decomp.wl, degree=args.paramDegree)
+smoothed_models = smooth_models(first_pass_models, decomp.wl,
+                                degree=args.paramDegree, fix_structural=args.fixStructural)
 smoothed_params = np.array([m.getParams() for m in smoothed_models], dtype=smoothed_models[0].dtype)
         
 logger.info('Starting second pass modeling...')

@@ -160,7 +160,7 @@ def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
 
 
 ################################################################################
-def smooth_models(models, wl, degree=1):
+def smooth_models(models, wl, degree=1, fix_structural=True):
     params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     smooth_params = np.empty(len(wl), dtype=params[0].dtype)    
     param_wl = params['wl']
@@ -173,15 +173,16 @@ def smooth_models(models, wl, degree=1):
     models = []
     for i in xrange(len(smooth_params)):
         m = BDModel.fromParamVector(smooth_params[i])
-        m.x0.fixed=True
-        m.y0.fixed=True
-        m.bulge.r_e.fixed=True
-        m.bulge.n.fixed=True
-        m.bulge.PA.fixed=True
-        m.bulge.ell.fixed=True
-        m.disk.h.fixed=True
-        m.disk.PA.fixed=True
-        m.disk.ell.fixed=True
+        if fix_structural:
+            m.x0.fixed=True
+            m.y0.fixed=True
+            m.bulge.r_e.fixed=True
+            m.bulge.n.fixed=True
+            m.bulge.PA.fixed=True
+            m.bulge.ell.fixed=True
+            m.disk.h.fixed=True
+            m.disk.PA.fixed=True
+            m.disk.ell.fixed=True
         models.append(m)
     return models
 ################################################################################
