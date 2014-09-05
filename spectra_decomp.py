@@ -21,31 +21,6 @@ import atpy
 
 
 ################################################################################
-def bd_initial_model_cached(flux, noise, PSF, quiet=False, nproc=None, cache_model_file=None):
-    '''
-    Doc me!
-    '''
-    if cache_model_file is not None and path.exists(cache_model_file):
-        try:
-            initial_model = BDModel.readConfig(cache_model_file)
-            logger.debug('Cached model found:\n%s\n' % initial_model)
-            return initial_model
-        except:
-            logger.warn('Bad cache model file %s. Deleting.' % cache_model_file)
-            unlink(cache_model_file)
-    initial_model = bd_initial_model(flux, noise, PSF, quiet=quiet)
-    if cache_model_file is not None:
-        with open(cache_model_file, 'w') as f:
-            logger.debug('Saving cache model %s.' % cache_model_file)
-            try:
-                f.write(str(initial_model))
-            except:
-                logger.warn('Could not write cache model file %s' % cache_model_file)
-    return initial_model
-################################################################################
-
-
-################################################################################
 def get_planes_image(l_obs, f__lz, l_mask, decomp):
     f_obs = np.ma.masked_invalid(f__lz['f_obs'][l_mask], copy=True)
     f_obs.fill_value = 0.0
@@ -155,7 +130,7 @@ logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
 t1 = time.time()
 qSignal = np.ma.array(decomp.K.qSignal, mask=~decomp.K.qMask)
 qNoise = np.ma.array(decomp.K.qNoise, mask=~decomp.K.qMask)
-initial_model = bd_initial_model_cached(qSignal, qNoise, decomp.PSF, quiet=False, nproc=args.nproc,
+initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False, nproc=args.nproc,
                                         cache_model_file=dbfile + '.initmodel')
 logger.debug('Refined initial model:\n%s\n' % initial_model)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))

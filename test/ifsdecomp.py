@@ -34,6 +34,8 @@ def parse_args():
                         help='Plot to this file.')
     parser.add_argument('--psf-fwhm', dest='modelPsfFWHM', type=float, default=2.4,
                         help='PSF FWHM (arcseconds) used when modeling.')
+    parser.add_argument('--cache', dest='cacheModel', default=None,
+                        help='Use the specified file as cached initial model.')
     
     return parser.parse_args()
 ################################################################################
@@ -225,7 +227,7 @@ qSignal, qNoise, qWl = decomp.getSpectraSlice(sl1, sl2)
 
 logger.warn('Computing initial model (takes a LOT of time).')
 t1 = time.time()
-initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False)
+initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False, cache_model_file=args.cacheModel)
 bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, decomp.PSF)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 

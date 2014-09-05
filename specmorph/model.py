@@ -10,11 +10,38 @@ from .util import logger
 
 from imfit import SimpleModelDescription, function_description, parse_config_file
 import numpy as np
+from os import unlink, path
 
 __all__ = ['BDModel', 'bd_initial_model', 'create_model_images']
 
 ################################################################################
-def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, use_cash_statitics=False):
+def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0,
+                     use_cash_statitics=False, cache_model_file=None):
+    '''
+    Doc me!
+    '''
+    if cache_model_file is not None and path.exists(cache_model_file):
+        try:
+            initial_model = BDModel.readConfig(cache_model_file)
+            logger.debug('Cached model found:\n%s\n' % initial_model)
+            return initial_model
+        except:
+            logger.warn('Bad cache model file %s. Deleting.' % cache_model_file)
+            unlink(cache_model_file)
+    initial_model = _bd_initial_model(image, noise, PSF, quiet=quiet)
+    if cache_model_file is not None:
+        with open(cache_model_file, 'w') as f:
+            logger.debug('Saving cache model %s.' % cache_model_file)
+            try:
+                f.write(str(initial_model))
+            except:
+                logger.warn('Could not write cache model file %s' % cache_model_file)
+    return initial_model
+################################################################################
+
+
+################################################################################
+def _bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, use_cash_statitics=False):
     '''
     Doc me!
     '''
