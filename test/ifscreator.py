@@ -9,6 +9,7 @@ from specmorph.components import SyntheticSFH
 from specmorph.model import BDModel, create_model_images
 from specmorph.geometry import distance
 from specmorph.util import logger
+from specmorph import flags
 
 from pystarlight.util.base import StarlightBase
 from imfit import gaussian_psf, convolve_image
@@ -37,7 +38,9 @@ def parse_args():
     parser.add_argument('--ny', dest='Ny', type=int, default=72,
                         help='Y dimension.')
     parser.add_argument('--flag-radius', dest='flagRadius', type=int, default=32,
-                        help='Flag pixels more distant from t he center than this value.')
+                        help='Flag pixels more distant from the center than this value.')
+    parser.add_argument('--flag-badpix', dest='flagThreshold', type=float, default=0.01,
+                        help='Fraction of random pixels flagged as bad pixels.')
     parser.add_argument('--noise-fraction', dest='noiseFraction', type=float, default=0.05,
                         help='Noise fraction.')
     parser.add_argument('--flux-unit', dest='fluxUnit', type=float, default=1e-16,
@@ -120,7 +123,7 @@ args = parse_args()
 logger.info('Loading base %s', path.basename(args.baseFile))
 t1 = time.clock()
 base = StarlightBase(args.baseFile, args.baseDir)
-l_ssp = np.arange(base.l_ssp.min(), base.l_ssp.max(), 2.0)
+l_ssp = np.arange(3650.0, 6850.0, 2.0)
 f_ssp = base.f_sspResam(l_ssp)
 logger.info('Took %.2f seconds to read the base (%d files)' % (time.clock() - t1, base.sspfile.size))
 wl_norm_window = (l_ssp < 5680.0) & (l_ssp > 5590.0)
@@ -196,15 +199,24 @@ norm_x0 = norm_model.x0.value - Nx_psf
 norm_model.y0.setValue(norm_y0)
 norm_model.x0.setValue(norm_x0)
 
-# FIXME: How to add gaussian noise to spectra?
-logger.info('Adding gaussian noise to IFS.')
-full_ifs_noise = full_ifs * args.noiseFraction
-tmp_noise = np.zeros(ifsshape)
-for l in xrange(ifsshape[0]):
-    for i in xrange(ifsshape[1]):
-        for j in xrange(ifsshape[2]):
-            tmp_noise[l, i, j] = np.random.normal(0.0, full_ifs_noise[l, i, j])
-full_ifs += tmp_noise
+logger.info('Adding fake gaussian noise to IFS.')
+full_ifs_noise = np.sqrt(full_ifs)
+full_ifs_noise *= full_ifs_noise.max() / 60.0
+full_ifs += np.random.normal(0.0, 1.0, ifsshape) * full_ifs_noise
+
+logger.info('Creating flags.')
+flag_ifs = np.zeros(ifsshape, dtype='int')
+
+# Global mask.
+r = distance(imshape, imshape[1] / 2, imshape[0] / 2)
+nodata = r > args.flagRadius
+flag_ifs[:,nodata] |= flags.no_data
+
+# Add bad pixels.
+badpix = np.random.random(ifsshape) < args.flagThreshold
+flag_ifs[badpix] |= flags.bad_pixel
+
+# TODO: add other flags
 
 logger.info('Took %.2f seconds to create the IFS.' % (time.clock() - t1))
 
@@ -233,8 +245,9 @@ save_array(db, grp, 'disk_ifs_nopsf', disk_ifs_pad[:, Ny_psf:-Ny_psf, Nx_psf:-Nx
 save_array(db, grp, 'disk_ifs', disk_ifs, args.overwrite)
 save_array(db, grp, 'full_ifs', full_ifs, args.overwrite)
 save_array(db, grp, 'full_ifs_noise', full_ifs_noise, args.overwrite)
-save_array(db, grp, 'psf', PSF, args.overwrite)
+save_array(db, grp, 'flag_ifs', flag_ifs, args.overwrite)
 
+save_array(db, grp, 'psf', PSF, args.overwrite)
 
 save_array(db, grp, 'tau_image', tau_image_pad[Ny_psf:-Ny_psf, Nx_psf:-Nx_psf], args.overwrite)
 save_array(db, grp, 'age_base', base.ageBase, args.overwrite)
@@ -244,7 +257,6 @@ for k, val in vars(args).iteritems():
     ifs.attrs[k] = val
 ifs.attrs['model'] = norm_params
 
-#db.close()
-
+db.close()
 logger.info('Storage complete.')
 
