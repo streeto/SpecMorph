@@ -51,6 +51,7 @@ def plot_setup(plot_file):
                 'ytick.labelsize': 10,
                 'text.fontsize': 10,
                 'axes.titlesize': 12,
+                'lines.linewidth': 0.5,
                 'font.family': 'Times New Roman',
     #             'figure.subplot.left': 0.08,
     #             'figure.subplot.bottom': 0.08,
@@ -113,28 +114,20 @@ except:
     logger.error('Unknown galaxy: %s' % args.galaxyName)
     sys.exit()
 
-bulge_image = np.ma.array(g.bulge_image[...])
-disk_image = np.ma.array(g.disk_image[...])
-r = distance(bulge_image.shape, bulge_image.shape[1] / 2, bulge_image.shape[0] / 2)
-masked = r > 32.0
-bulge_image[masked] = np.ma.masked
-disk_image[masked] = np.ma.masked
-full_image = bulge_image + disk_image
+masked = g.flag_ifs[...] > 0
+masked2d = masked.sum(axis=0) > masked.shape[0] / 2
+bulge_image = g.bulge_image[...]
+disk_image = g.disk_image[...]
+full_image = np.ma.array(bulge_image + disk_image, mask=masked2d)
 
-bulge_ifs = np.ma.array(g.bulge_ifs[...])
-bulge_ifs[:,masked] = np.ma.masked
-bulge_ifs_nopsf = np.ma.array(g.bulge_ifs_nopsf[...])
-bulge_ifs_nopsf[:,masked] = np.ma.masked
+bulge_ifs = g.bulge_ifs[...]
+bulge_ifs_nopsf = g.bulge_ifs_nopsf[...]
 
-disk_ifs = np.ma.array(g.disk_ifs[...])
-disk_ifs[:,masked] = np.ma.masked
-disk_ifs_nopsf = np.ma.array(g.disk_ifs_nopsf[...])
-disk_ifs_nopsf[:,masked] = np.ma.masked
+disk_ifs = g.disk_ifs[...]
+disk_ifs_nopsf = g.disk_ifs_nopsf[...]
 
-full_ifs = np.ma.array(g.full_ifs[...])
-full_ifs[:,masked] = np.ma.masked
-full_ifs_noise = np.ma.array(g.full_ifs_noise[...])
-full_ifs_noise[:,masked] = np.ma.masked
+full_ifs = np.ma.array(g.full_ifs[...], mask=masked)
+full_ifs_noise = np.ma.array(g.full_ifs_noise[...], mask=masked)
 
 wl = g.wl[...]
 true_psf = np.ma.array(g.psf[...])
@@ -193,11 +186,11 @@ ax.set_ylim(-1.0, 1.1)
 ax.legend(loc='upper right')
 
 ax = plt.subplot(gs[1,2])
-im = ax.imshow(tau_image)
+im = ax.imshow(tau_image / 1e9)
 plt.colorbar(im, ax=ax)
 ax.set_xticks([])
 ax.set_yticks([])
-ax.set_title(r'$\tau$ (SFH bulge)')
+ax.set_title(r'$\tau$ (SFH bulge) $[Gyr]$')
 
 
 norm_I_e = norm_model.bulge.I_e.value
@@ -392,7 +385,7 @@ func = {'I_e': log10flux,
 ########## All fit parameters 
 ##########
 ################################################################################
-fig = plt.figure(figsize=(8, 7))
+fig = plt.figure(figsize=(10, 7))
 n_rows = 4
 n_cols = 3
 gs = plt.GridSpec(n_rows, n_cols)
@@ -539,12 +532,22 @@ ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xlabel(r'wavelength $[\AA]$')
 ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
 ax.set_title(r'Spectra at $R = r_e$ ($%.1f\,arcsec$)' % initial_model.bulge.r_e.value)
-ax.legend()
 
 ax = plt.subplot(gs[2, 0])
-bulge_error = radialProfile(fitted_bulge_ifs/bulge_ifs, bins, norm_x0, norm_y0, pa, ba, rad_scale=1.0)
-im = ax.pcolormesh(bins, wl, bulge_error)
-ax.set_xlim(0, bins.max())
+pa = (90.0 + initial_model.bulge.PA.value) * np.pi / 180.0
+ba = 1.0 - initial_model.bulge.ell.value
+bulge_bins = np.arange(0.0, initial_model.bulge.r_e.value * 2.5 + 1.0)
+bulge_error = fitted_bulge_ifs / bulge_ifs
+bulge_error_mean = np.mean(bulge_error)
+bulge_error_var = np.var(bulge_error)
+print 'bulge error: %.4f +- %.4f' % (bulge_error_mean, bulge_error_var)
+bulge_error_r = radialProfile(bulge_error, bulge_bins, norm_x0, norm_y0, pa, ba, rad_scale=1.0)
+bulge_error_min, bulge_error_max = np.percentile(bulge_error_r, (5, 95))
+bulge_error_mean = np.mean(bulge_error_r)
+bulge_error_var = np.var(bulge_error_r)
+im = ax.pcolormesh(bulge_bins, wl, bulge_error_r, vmin=bulge_error_min, vmax=bulge_error_max)
+ax.text(0.1, 0.9, r'$%.4f\ \pm\ %.4f$' % (bulge_error_mean, bulge_error_var), transform=ax.transAxes)
+ax.set_xlim(0, bulge_bins.max())
 ax.set_ylim(wl.min(), wl.max())
 ax.set_xlabel(r'radius $[arcsec]$')
 ax.set_ylabel(r'wavelength $[\AA]$')
@@ -552,8 +555,18 @@ ax.set_title(r'Fitted / original ratio for bulge')
 plt.colorbar(im, ax=ax)
 
 ax = plt.subplot(gs[2, 1])
-disk_error = radialProfile(fitted_disk_ifs/disk_ifs, bins, norm_x0, norm_y0, pa, ba, rad_scale=1.0)
-im = ax.pcolormesh(bins, wl, disk_error)
+pa = (90.0 + initial_model.disk.PA.value) * np.pi / 180.0
+ba = 1.0 - initial_model.disk.ell.value
+disk_error = fitted_disk_ifs / disk_ifs
+disk_error_mean = np.mean(disk_error)
+disk_error_var = np.var(disk_error)
+print 'Disk error: %.4f +- %.4f' % (disk_error_mean, disk_error_var)
+disk_error_r = radialProfile(disk_error, bins, norm_x0, norm_y0, pa, ba, rad_scale=1.0)
+disk_error_min, disk_error_max = np.percentile(disk_error_r, (5, 95))
+disk_error_mean = np.mean(disk_error_r)
+disk_error_var = np.var(disk_error_r)
+im = ax.pcolormesh(bins, wl, disk_error_r, vmin=disk_error_min, vmax=disk_error_max)
+ax.text(0.1, 0.9, r'$%.4f\ \pm\ %.4f$' % (disk_error_mean, disk_error_var), transform=ax.transAxes)
 ax.set_xlim(0, bins.max())
 ax.set_ylim(wl.min(), wl.max())
 ax.set_xlabel(r'radius $[arcsec]$')
