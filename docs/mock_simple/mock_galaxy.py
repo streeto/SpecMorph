@@ -14,20 +14,20 @@ from os import path
 
 def bulge_function(I_e, r_e, n, PA, ell):
     bulge = function_description('Sersic', name='bulge')
-    bulge.I_e.setValue(I_e, [1e-33, 10*I_e])
-    bulge.r_e.setValue(r_e, [1e-33, 10*r_e])
-    bulge.n.setValue(n, [0.5, 5.9])
-    bulge.PA.setValue(PA, [0, 180])
-    bulge.ell.setValue(ell, [0, 1])
+    bulge.I_e.setValue(I_e, vmin=1e-33, vmax=10*I_e)
+    bulge.r_e.setValue(r_e, vmin=1e-33, vmax=10*r_e)
+    bulge.n.setValue(n, vmin=0.5, vmax=5.9)
+    bulge.PA.setValue(PA, vmin=0, vmax=180)
+    bulge.ell.setValue(ell, vmin=0, vmax=1)
     return bulge
 
 
 def disk_function(I_0, h, PA, ell):
     disk = function_description('Exponential', name='disk')
-    disk.I_0.setValue(I_0, [1e-33, 10*I_0])
-    disk.h.setValue(h, [1e-33, 10*h])
-    disk.PA.setValue(PA, [0, 180])
-    disk.ell.setValue(ell, [0, 1])
+    disk.I_0.setValue(I_0, vmin=1e-33, vmax=10*I_0)
+    disk.h.setValue(h, vmin=1e-33, vmax=10*h)
+    disk.PA.setValue(PA, vmin=0, vmax=180)
+    disk.ell.setValue(ell, vmin=0, vmax=1)
     return disk
 
 
@@ -36,8 +36,8 @@ def galaxy_model(x0, y0, bulge=False, disk=False,
     if not (bulge or disk):
         raise Exception('At least one of bulge or disk must be set.') 
     model = SimpleModelDescription()
-    model.x0.setValue(x0, [x0-10, x0+10])
-    model.y0.setValue(y0, [y0-10, y0+10])
+    model.x0.setValue(x0, vmin=x0-10, vmax=x0+10)
+    model.y0.setValue(y0, vmin=y0-10, vmax=y0+10)
     if bulge:
         bulge = bulge_function(I_e, r_e, n, PA_b, ell_b)
         model.addFunction(bulge)

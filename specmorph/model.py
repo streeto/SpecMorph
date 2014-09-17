@@ -12,7 +12,7 @@ from imfit import SimpleModelDescription, function_description, parse_config_fil
 import numpy as np
 from os import unlink, path
 
-__all__ = ['BDModel', 'bd_initial_model', 'create_model_images']
+__all__ = ['BDModel', 'bulge_model', 'disk_model', 'bd_initial_model', 'create_model_images']
 
 ################################################################################
 def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0,
@@ -22,7 +22,7 @@ def bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0,
     '''
     if cache_model_file is not None and path.exists(cache_model_file):
         try:
-            initial_model = BDModel.readConfig(cache_model_file)
+            initial_model = BDModel.load(cache_model_file)
             logger.debug('Cached model found:\n%s\n' % initial_model)
             return initial_model
         except:
@@ -56,47 +56,62 @@ def _bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, 
     disk_image[r < disk_begins] = np.ma.masked
     disk_noise = noise.copy()
     disk_noise[r < disk_begins] = np.ma.masked
-    guess_I_0 = disk_image.max() * 2.0
-    disk_model = BDModel(wl=5635.0, x0=x0, y0=y0,
-                         I_e=0.0, r_e=image_r50/2.0, n=3, PA_b=pa, ell_b=ell,
-                         I_0=disk_image.max(), h=disk_begins, PA_d=pa, ell_d=ell)
-    disk_model.disk.I_0.limits = (1e-33, 5* guess_I_0)
-    disk_model.bulge.I_e.fixed=True
-    disk_model.bulge.r_e.fixed=True
-    disk_model.bulge.n.fixed=True
-    disk_model.bulge.PA.fixed=True
-    disk_model.bulge.ell.fixed=True
-    logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(disk_model)))
-    bdmodel, converged, chi2 = fit_image(disk_image, disk_noise, disk_model, PSF,
-                                         mode='DE', quiet=quiet, nproc=nproc,
-                                         use_cash_statistics=use_cash_statitics)
-    pa, ell = fix_PA_ell(bdmodel.disk.PA.value, bdmodel.disk.ell.value)
-    bdmodel.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
-    bdmodel.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
-    bdmodel.disk.I_0.setTolerance(0.3)
-    bdmodel.disk.h.setTolerance(0.3)
-    logger.info('Disk fit - converged: %s; chi2 = %.2f; h = %.2f' % (converged, chi2, bdmodel.disk.h.value))
-    logger.debug('Fitted disk (r > %.2f):\n%s\n' % (disk_begins, str(bdmodel)))
+    guess_I_0 = disk_image.max() * 1.0
+    dmodel = disk_model(wl=5635.0, x0=x0, y0=y0, I_0=guess_I_0, h=disk_begins, PA=pa, ell=ell)
+    dmodel.x0.setLimitsRel(5, 5)
+    dmodel.y0.setLimitsRel(5, 5)
+    dmodel.disk.I_0.setLimits(1e-33, 5.0 * guess_I_0)
+    dmodel.disk.h.setLimits(1e-33, 2.5 * disk_begins)
+    dmodel.disk.PA.setLimitsRel(30.0, 30.0)
+    dmodel.disk.ell.setLimitsRel(0.25, 0.25)
+    logger.debug('Initial guess for disk (r > %.2f):\n%s\n' % (disk_begins, str(dmodel)))
+    f_dmodel, converged, chi2 = fit_image(disk_image, disk_noise, dmodel, PSF,
+                                                   mode='DE', quiet=quiet, nproc=nproc,
+                                                   use_cash_statistics=use_cash_statitics)
+    logger.info('Disk fit - converged: %s; chi2 = %.2f; h = %.2f' % (converged, chi2, f_dmodel.disk.h.value))
+    logger.debug('Fitted disk (r > %.2f):\n%s\n' % (disk_begins, str(f_dmodel)))
 
     image_max = image.max()
-    bdmodel.bulge.I_e.setValue(image_max, [1e-33, 2*image_max])
-    bdmodel.bulge.PA.setValue(pa, [pa - 30.0, pa + 30.0])
-    bdmodel.bulge.PA.fixed=False
-    bdmodel.bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
-    bdmodel.bulge.ell.fixed=False
-    bdmodel.bulge.I_e.fixed=False
-    bdmodel.bulge.r_e.fixed=False
-    bdmodel.bulge.n.fixed=False
+    pa, ell = fix_PA_ell(f_dmodel.disk.PA.value, f_dmodel.disk.ell.value)
+    bdmodel = BDModel()
+    bdmodel.wl = 5635.0
+    bdmodel.x0.setValue(x0)
+    bdmodel.x0.setLimitsRel(5, 5)
+    bdmodel.y0.setValue(y0)
+    bdmodel.y0.setLimitsRel(5, 5)
+    bdmodel.disk.I_0.setValue(f_dmodel.disk.I_0.value)
+    bdmodel.disk.I_0.setTolerance(0.5)
+    bdmodel.disk.h.setValue(f_dmodel.disk.h.value)
+    bdmodel.disk.h.setTolerance(0.5)
+    bdmodel.disk.PA.setValue(pa)
+    bdmodel.disk.PA.setLimitsRel(10.0, 10.0)
+    bdmodel.disk.ell.setValue(ell)
+    bdmodel.disk.ell.setLimitsRel(0.1, 0.1)
+
+    bdmodel.bulge.I_e.setValue(image_max)
+    bdmodel.bulge.I_e.setLimits(1e-33, 3.0 * image_max)
+    bdmodel.bulge.r_e.setValue(image_r50 / 2.0)
+    bdmodel.bulge.r_e.setLimits(1e-33, 2.5 * image_r50)
+    bdmodel.bulge.n.setValue(3.0, vmin=1.0, vmax=5.0)
+    bdmodel.bulge.PA.setValue(pa)
+    bdmodel.bulge.PA.setLimitsRel(30.0, 30.0)
+    bdmodel.bulge.ell.setValue(ell)
+    bdmodel.bulge.ell.setLimitsRel(0.25, 0.25)
+    
     logger.debug('First guess model:\n%s\n' % str(bdmodel))
     bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
                                          mode='DE', quiet=quiet, nproc=nproc,
                                          use_cash_statistics=use_cash_statitics)
     pa, ell = fix_PA_ell(bdmodel.bulge.PA.value, bdmodel.bulge.ell.value)
-    bdmodel.bulge.PA.setValue(pa, [pa - 30.0, pa + 30.0])
-    bdmodel.bulge.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    bdmodel.bulge.PA.setValue(pa)
+    bdmodel.bulge.PA.setLimitsRel(10.0, 10.0)
+    bdmodel.bulge.ell.setValue(ell)
+    bdmodel.bulge.ell.setLimitsRel(0.1, 0.1)
     pa, ell = fix_PA_ell(bdmodel.disk.PA.value, bdmodel.disk.ell.value)
-    bdmodel.disk.PA.setValue(pa, [pa - 30.0, pa + 30.0])
-    bdmodel.disk.ell.setValue(ell, [ell - 0.2, ell + 0.2])
+    bdmodel.disk.PA.setValue(pa)
+    bdmodel.disk.PA.setLimitsRel(10.0, 10.0)
+    bdmodel.disk.ell.setValue(ell)
+    bdmodel.disk.ell.setLimitsRel(0.1, 0.1)
     logger.info('First guess fit - converged: %s; chi2 = %.2f' % (converged, chi2))
 
     logger.debug('Second guess model:\n%s\n' % str(bdmodel))
@@ -121,24 +136,24 @@ def create_model_images(model, shape, PSF, nproc=None):
 
     
 ################################################################################
-def bulge_function(I_e, r_e, n, PA, ell):
+def bulge_function(I_e=0.0, r_e=0.0, n=0.0, PA=0.0, ell=0.0):
     bulge = function_description('Sersic', name='bulge')
-    bulge.I_e.setValue(I_e, [1e-33, 5.0*I_e])
-    bulge.r_e.setValue(r_e, [1e-33, 5.0*r_e])
-    bulge.n.setValue(n, [1.0,5.0])
-    bulge.PA.setValue(PA, [PA - 30.0, PA + 30.0])
-    bulge.ell.setValue(ell, [ell - 0.25, ell + 0.25])
+    bulge.I_e.setValue(I_e)
+    bulge.r_e.setValue(r_e)
+    bulge.n.setValue(n)
+    bulge.PA.setValue(PA)
+    bulge.ell.setValue(ell)
     return bulge
 ################################################################################
 
 
 ################################################################################
-def disk_function(I_0, h, PA, ell):
+def disk_function(I_0=0.0, h=0.0, PA=0.0, ell=0.0):
     disk = function_description('Exponential', name='disk')
-    disk.I_0.setValue(I_0, [1e-33, 5.0*I_0])
-    disk.h.setValue(h, [1e-33, 5.0*h])
-    disk.PA.setValue(PA, [PA - 30.0, PA + 30.0])
-    disk.ell.setValue(ell, [ell - 0.25, ell + 0.25])
+    disk.I_0.setValue(I_0)
+    disk.h.setValue(h)
+    disk.PA.setValue(PA)
+    disk.ell.setValue(ell)
     return disk
 ################################################################################
 
@@ -189,71 +204,84 @@ def smooth_models(models, wl, degree=1, fix_structural=True):
 
 
 ################################################################################
+def disk_model(wl, x0, y0, I_0, h, PA, ell):
+    model = SimpleModelDescription()
+    model.wl = wl
+    model.x0.setValue(x0)
+    model.y0.setValue(y0)
+    disk = disk_function(I_0, h, PA, ell)
+    model.addFunction(disk)
+    return model
+################################################################################
+
+
+################################################################################
+def bulge_model(wl, x0, y0, I_e, r_e, n, PA, ell):
+    model = SimpleModelDescription()
+    model.wl = wl
+    model.x0.setValue(x0)
+    model.y0.setValue(y0)
+    bulge = bulge_function(I_e, r_e, n, PA, ell)
+    model.addFunction(bulge)
+    return model
+################################################################################
+
+
+################################################################################
 class BDModel(SimpleModelDescription):
 
-    def __init__(self, wl, x0, y0, I_e, r_e, n, PA_b, ell_b, I_0, h, PA_d, ell_d):
-        super(BDModel, self).__init__()
-        self.wl = wl
-        self.x0.setValue(x0, [x0-10, x0+10])
-        self.y0.setValue(y0, [y0-10, y0+10])
+    def __init__(self, inst=None):
+        super(BDModel, self).__init__(inst)
+        self.wl = 0.0
         self.flag = 0.0
         self.chi2 = 0.0
         self.nValidPixels = 0
-        if I_e is not None and r_e is not None:
-            bulge = bulge_function(I_e, r_e, n, PA_b, ell_b)
+        if inst is not None:
+            # Rename loaded functions.
+            self.Sersic._name = 'bulge'
+            self.Exponential._name = 'disk'
+        else:
+            bulge = bulge_function()
             self.addFunction(bulge)
-        if I_0 is not None and h is not None:
-            disk = disk_function(I_0, h, PA_d, ell_d)
+            disk = disk_function()
             self.addFunction(disk)
 
 
     @classmethod
     def fromParamVector(cls, p):
-        return BDModel(wl=p['wl'], x0=p['x0'], y0=p['y0'],
-                       I_e=p['I_e'], r_e=p['r_e'], n=p['n'], PA_b=p['PA_b'], ell_b=p['ell_b'],
-                       I_0=p['I_0'], h=p['h'], PA_d=p['PA_d'], ell_d=p['ell_d'])
+        model = cls()
+        model.wl = p['wl']
+        model.x0.setValue(p['x0'])
+        model.y0.setValue(p['y0'])
+        model.bulge.I_e.setValue(p['I_e'])
+        model.bulge.r_e.setValue(p['r_e'])
+        model.bulge.n.setValue(p['n'])
+        model.bulge.PA.setValue(p['PA_b'])
+        model.bulge.ell.setValue(p['ell_b'])
+        model.disk.I_0.setValue(p['I_0'])
+        model.disk.h.setValue(p['h'])
+        model.disk.PA.setValue(p['PA_d'])
+        model.disk.ell.setValue(p['ell_d'])
+        return model
 
         
     @classmethod
-    def readConfig(cls, config):
-        model = parse_config_file(config)
-        wl = 0.0
-        x0 = model.fs0.x0.value
-        y0 = model.fs0.y0.value
-        I_e = model.fs0.Sersic.I_e.value
-        r_e = model.fs0.Sersic.r_e.value
-        n = model.fs0.Sersic.n.value
-        PA_b = model.fs0.Sersic.PA.value
-        ell_b = model.fs0.Sersic.ell.value
-        I_0 = model.fs0.Exponential.I_0.value
-        h = model.fs0.Exponential.h.value
-        PA_d = model.fs0.Exponential.PA.value
-        ell_d = model.fs0.Exponential.ell.value
-        gmodel = cls(wl, x0, y0, I_e, r_e, n, PA_b, ell_b,
-                     I_0, h, PA_d, ell_d)
-        return gmodel
+    def load(cls, config):
+        model = SimpleModelDescription.load(config)
+        model = cls(model)
+        return model
 
 
     def getBulge(self):
-        model = SimpleModelDescription()
-        model.wl = self.wl
-        model.x0.value = self.x0.value
-        model.y0.value = self.y0.value
-        bulge = bulge_function(self.bulge.I_e.value, self.bulge.r_e.value, self.bulge.n.value,
-                               self.bulge.PA.value, self.bulge.ell.value)
-        model.addFunction(bulge)
-        return model
+        return bulge_model(self.wl, self.x0.value, self.y0.value,
+                           self.bulge.I_e.value, self.bulge.r_e.value, self.bulge.n.value,
+                           self.bulge.PA.value, self.bulge.ell.value)
         
         
     def getDisk(self):
-        model = SimpleModelDescription()
-        model.wl = self.wl
-        model.x0.value = self.x0.value
-        model.y0.value = self.y0.value
-        disk = disk_function(self.disk.I_0.value, self.disk.h.value,
-                               self.disk.PA.value, self.disk.ell.value)
-        model.addFunction(disk)
-        return model
+        return disk_model(self.wl, self.x0.value, self.y0.value,
+                          self.disk.I_0.value, self.disk.h.value,
+                          self.disk.PA.value, self.disk.ell.value)
         
     
     @property
@@ -272,7 +300,11 @@ class BDModel(SimpleModelDescription):
 
 
     def __deepcopy__(self, memo):
-        return type(self)(self.wl, self.x0.value, self.y0.value,
-                          self.bulge.I_e.value, self.bulge.r_e.value, self.bulge.n.value, self.bulge.PA.value, self.bulge.ell.value,
-                          self.disk.I_0.value, self.disk.h.value, self.disk.PA.value, self.disk.ell.value)
+        model = super(BDModel, self).__deepcopy__(memo)
+        model.wl = self.wl
+        model.flag = self.flag
+        model.chi2 = self.chi2
+        model.nValidPixels = self.nValidPixels
+        return model
+
 ################################################################################

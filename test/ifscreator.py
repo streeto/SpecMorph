@@ -63,19 +63,18 @@ def parse_args():
 
 ################################################################################
 def default_model():
-    x0 = 36.0
-    y0 = 33.0
-    I_e = 2.0
-    r_e = 5.0
-    n = 2.0
-    I_0 = 1.0
-    h = 15.0
-    ba = 0.9
-    ell = 1.0 - ba
-    pa = 45.0
-    true_model = BDModel(0, x0, y0, 
-        I_e=I_e, r_e=r_e, n=n, PA_b=pa, ell_b=ell, 
-        I_0=I_0, h=h, PA_d=pa, ell_d=ell)
+    true_model = BDModel()
+    true_model.x0.setValue(36.0)
+    true_model.y0.setValue(33.0)
+    true_model.bulge.I_e.setValue(2.0)
+    true_model.bulge.r_e.setValue(5.0)
+    true_model.bulge.n.setValue(2.0)
+    true_model.bulge.ell.setValue(0.1)
+    true_model.bulge.PA.setValue(45.0)
+    true_model.disk.I_0.setValue(1.0)
+    true_model.disk.h.setValue(15.0)
+    true_model.disk.ell.setValue(0.1)
+    true_model.disk.PA.setValue(45.0)
     return true_model
 ################################################################################
 
@@ -85,7 +84,7 @@ def get_model(model_file=None, with_default=False):
     if model_file is not None:
         try:
             logger.info('Loading model from %s.' % model_file)
-            model = BDModel.readConfig(model_file)
+            model = BDModel.load(model_file)
             model.wl = 5635.0
             return model
         except:

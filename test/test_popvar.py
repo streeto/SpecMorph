@@ -119,7 +119,7 @@ def get_model(model_file=None, with_default=False):
     if model_file is not None:
         try:
             logger.info('Loading model from %s.' % model_file)
-            model = BDModel.readConfig(model_file)
+            model = BDModel.load(model_file)
             model.wl = 5635.0
             return model
         except:
