@@ -102,6 +102,8 @@ def _bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, 
     bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
                                          mode='DE', quiet=quiet, nproc=nproc,
                                          use_cash_statistics=use_cash_statitics)
+    logger.info('First guess fit - converged: %s; chi2 = %.2f' % (converged, chi2))
+
     pa, ell = fix_PA_ell(bdmodel.bulge.PA.value, bdmodel.bulge.ell.value)
     bdmodel.bulge.PA.setValue(pa)
     bdmodel.bulge.PA.setLimitsRel(10.0, 10.0)
@@ -112,13 +114,22 @@ def _bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, 
     bdmodel.disk.PA.setLimitsRel(10.0, 10.0)
     bdmodel.disk.ell.setValue(ell)
     bdmodel.disk.ell.setLimitsRel(0.1, 0.1)
-    logger.info('First guess fit - converged: %s; chi2 = %.2f' % (converged, chi2))
-
     logger.debug('Second guess model:\n%s\n' % str(bdmodel))
     bdmodel, converged, chi2 = fit_image(image, noise, bdmodel, PSF,
                                          mode='NM', quiet=quiet, nproc=nproc,
                                          use_cash_statistics=use_cash_statitics)
     logger.info('Second guess - converged: %s; chi2 = %.2f' % (converged, chi2))
+
+    bdmodel.disk.I_0.setLimits(1e-33, 10.0 * bdmodel.disk.I_0.value)
+    bdmodel.disk.h.setTolerance(0.3)
+    bdmodel.disk.PA.setLimitsRel(10.0, 10.0)
+    bdmodel.disk.ell.setLimitsRel(0.1, 0.1)
+    bdmodel.disk.I_0.setLimits(1e-33, 10.0 * bdmodel.bulge.I_e.value)
+    bdmodel.bulge.r_e.setTolerance(0.3)
+    bdmodel.bulge.n.setTolerance(0.5)
+    bdmodel.bulge.PA.setLimitsRel(10.0, 10.0)
+    bdmodel.bulge.ell.setLimitsRel(0.1, 0.1)
+    
     logger.debug('Final model:\n%s\n' % str(bdmodel))
     return bdmodel
 ################################################################################
