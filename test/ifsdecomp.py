@@ -32,8 +32,10 @@ def parse_args():
                         help='Output HDF5 database path.')
     parser.add_argument('--plot', dest='plotFile', default='test.pdf',
                         help='Plot to this file.')
-    parser.add_argument('--psf-fwhm', dest='modelPsfFWHM', type=float, default=2.4,
+    parser.add_argument('--psf-fwhm', dest='modelPsfFWHM', type=float, default=2.9,
                         help='PSF FWHM (arcseconds) used when modeling.')
+    parser.add_argument('--psf-beta', dest='modelPsfBeta', type=float, default=2.3,
+                        help='PSF beta used when modeling.')
     parser.add_argument('--fix-structural', dest='fixStructural', action='store_true',
                         help='Fix structural parameters in second pass.')
     parser.add_argument('--cache', dest='cacheModel', default=None,
@@ -211,8 +213,8 @@ pdf.savefig()
 
 logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
-logger.info('Model using PSF FWHM = %.2f ".' % args.modelPsfFWHM)
-decomp.setSynthPSF(FWHM=args.modelPsfFWHM, size=9)
+logger.info('Model using PSF FWHM = %.2f ", beta = %.2f.' % (args.modelPsfFWHM, args.modelPsfFWHM))
+decomp.setSynthPSF(FWHM=args.modelPsfFWHM, beta=args.modelPsfBeta, size=15)
 decomp.loadData(wl, full_ifs, full_ifs_noise, np.zeros_like(full_ifs, dtype='bool'))
 
 swll, swlu = 5590.0, 5680.0

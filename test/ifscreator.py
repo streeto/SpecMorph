@@ -12,7 +12,7 @@ from specmorph.util import logger
 from specmorph import flags
 
 from pystarlight.util.base import StarlightBase
-from imfit import gaussian_psf, convolve_image
+from imfit import moffat_psf, convolve_image
 import numpy as np
 import time
 from os import path
@@ -31,8 +31,10 @@ def parse_args():
                         help='File describing the starlight bases.')
     parser.add_argument('--base-dir', dest='baseDir', default='data/starlight/BasesDir',
                         help='Directory containing the base spectra.')
-    parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=2.4,
+    parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=2.9,
                         help='PSF FWHM (arcseconds).')
+    parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=2.3,
+                        help='PSF beta.')
     parser.add_argument('--nx', dest='Nx', type=int, default=77,
                         help='X dimension.')
     parser.add_argument('--ny', dest='Ny', type=int, default=72,
@@ -138,8 +140,8 @@ norm_model = get_model(args.trueModel, with_default=True)
 norm_params = np.array(norm_model.getParams(), dtype=norm_model.dtype)
 logger.info('Original model at normalization window:\n%s\n' % str(norm_model))
 
-logger.info('Creating PSF (FWHM = %.2f ")' % args.psfFWHM)
-PSF = gaussian_psf(args.psfFWHM, size=15)
+logger.info('Creating PSF (FWHM = %.2f ", beta = %.2f)' % (args.psfFWHM, args.psfBeta))
+PSF = moffat_psf(args.psfFWHM, args.psfBeta, size=15)
 # Pad image to avoid artifacts at the borders when convolving.
 Ny_psf = PSF.shape[0]
 Nx_psf = PSF.shape[1]
