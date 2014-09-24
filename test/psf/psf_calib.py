@@ -15,7 +15,7 @@ import sys
 star = sys.argv[1]
 date = sys.argv[2]
 grating = sys.argv[3]
-cube = '../../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
+cube = '../../../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
 psfradius = 7
 psfLstep = 40.0 # /AA
 badpix_frac = 0.5
@@ -159,7 +159,7 @@ params['chi2'] = chi2
 params[psfflags] = np.ma.masked
 
 header =' '.join(params.dtype.names)
-np.savetxt('psf_calib/%s.%s.%s.v1.5.PSF.dat' % (star, date, grating), params, header=header)
+np.savetxt('out_calib/%s.%s.%s.v1.5.PSF.dat' % (star, date, grating), params, header=header)
 
 plt.clf()
 plt.figure(figsize=(8, 12))
@@ -215,5 +215,5 @@ plt.ylim(0.0, 110.0)
 plt.xlim(psf_wl.min(), psf_wl.max())
 
 plt.suptitle('PSF Moffat parameters for %s @ %s (%s)' % (star, date, grating))
-plt.savefig('psf_calib/%s.%s.%s.v1.5.PSF.png' % (star, date, grating))
+plt.savefig('out_calib/%s.%s.%s.v1.5.PSF.png' % (star, date, grating))
 

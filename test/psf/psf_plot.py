@@ -57,7 +57,7 @@ y0V1200 = np.ma.empty((len(galaxiesV1200),  nlambdaV1200))
 ellV1200 = np.ma.empty((len(galaxiesV1200),  nlambdaV1200))
 
 for i, galaxy in enumerate(galaxiesV500):
-    cube = 'psf/%s.%s.v1.5.PSF.dat' % (galaxy, 'V500')
+    cube = 'out/%s.%s.v1.5.PSF.dat' % (galaxy, 'V500')
     p = np.genfromtxt(cube, dtype=param_dtype)
     wlV500 = p['lambda']
     mask = p['flag'] | (p['good'] < 0.6)
@@ -73,7 +73,7 @@ for i, galaxy in enumerate(galaxiesV500):
     ellV500[i, mask] = np.ma.masked
 
 for i, galaxy in enumerate(galaxiesV1200):
-    cube = 'psf/%s.%s.v1.5.PSF.dat' % (galaxy, 'V1200')
+    cube = 'out/%s.%s.v1.5.PSF.dat' % (galaxy, 'V1200')
     p = np.genfromtxt(cube, dtype=param_dtype)
     wlV1200 = p['lambda']
     mask = p['flag'] | (p['good'] < 0.7)
@@ -128,7 +128,7 @@ plt.xlabel(r'wavelength $[\AA]$')
 plt.ylim(0.0, 4.0)
 plt.xlim(wlmin, wlmax)
 
-plt.savefig('PSF_all.png')
+plt.savefig('out/PSF_all.png')
 
 
 plt.figure(figsize=(5,6))
@@ -151,4 +151,4 @@ plt.ylabel(r'$\beta$')
 plt.xlabel(r'distance $[arcsec]$')
 plt.ylim(0.0,5.0)
 plt.xlim(0.0,35.0)
-plt.savefig('PSF_distance.png')
+plt.savefig('out/PSF_distance.png')

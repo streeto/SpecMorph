@@ -38,7 +38,7 @@ galaxycenter = {'NGC0023': (31.4, 35.6),
 
 galaxy = sys.argv[1]
 cubeversion = sys.argv[2]
-cube = '../../cubes.DR2/%s.%s.rscube.fits.gz' % (galaxy, cubeversion)
+cube = '../../../cubes.DR2/%s.%s.rscube.fits.gz' % (galaxy, cubeversion)
 psfradius = 7
 psfLstep = 40.0 # /AA
 badpix_frac = 0.5
@@ -192,7 +192,7 @@ params['chi2'] = chi2
 params[psfflags] = np.ma.masked
 
 header =' '.join(params.dtype.names)
-np.savetxt('%s.%s.v1.5.PSF.dat' % (galaxy, cubeversion), params, header=header)
+np.savetxt('out/%s.%s.v1.5.PSF.dat' % (galaxy, cubeversion), params, header=header)
 
 plt.clf()
 plt.figure(figsize=(8, 12))
@@ -248,5 +248,5 @@ plt.ylim(0.0, 110.0)
 plt.xlim(psf_wl.min(), psf_wl.max())
 
 plt.suptitle('PSF Moffat parameters for %s (%s)' % (galaxy, cubeversion))
-plt.savefig('%s.%s.v1.5.PSF.png' % (galaxy, cubeversion))
+plt.savefig('out/%s.%s.v1.5.PSF.png' % (galaxy, cubeversion))
 
