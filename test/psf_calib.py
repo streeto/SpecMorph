@@ -7,7 +7,7 @@ Created on 10/09/2014
 import pyfits
 import numpy as np
 import matplotlib.pyplot as plt
-from pycasso.util import radialProfile, getEllipseParams
+from pycasso.util import radialProfile
 from specmorph.geometry import fix_PA_ell
 from imfit import Imfit, SimpleModelDescription, function_description
 import sys
@@ -109,6 +109,12 @@ for i in xrange(flux.shape[0]):
     psfmodels.append(fitmodel)
     if debug:
         print fitmodel
+
+        plt.clf()
+        plt.imshow(flux[i])
+        plt.colorbar()
+        plt.show()
+        
         bins = np.arange(0, 10)
         bins_c = bins[:-1] + 0.5
         pa = fitmodel.Moffat.PA.value
@@ -116,11 +122,11 @@ for i in xrange(flux.shape[0]):
         pa, ell = fix_PA_ell(pa, ell)
         pa = np.pi * pa / 180.0
         ba = 1.0 - ell
-        flux_r = radialProfile(flux[i_plot], bins, fitmodel.x0.value, fitmodel.y0.value,
-                               fitmodel.Moffat.PA.value, 1.0 - fitmodel.Moffat.ell.value)
-        flux_model_r = radialProfile(flux[i_plot], bins, fitmodel.x0.value, fitmodel.y0.value,
+        flux_r = radialProfile(flux[i], bins, fitmodel.x0.value, fitmodel.y0.value,
+                               pa, ba)
+        flux_model_r = radialProfile(flux[i], bins, fitmodel.x0.value, fitmodel.y0.value,
                                      pa, ba)
-        
+         
         plt.clf()
         plt.plot(bins_c, flux_r)
         plt.plot(bins_c, flux_model_r)
