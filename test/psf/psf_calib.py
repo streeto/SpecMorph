@@ -7,86 +7,99 @@ Created on 10/09/2014
 import pyfits
 import numpy as np
 import matplotlib.pyplot as plt
-from pycasso.util import radialProfile
-from specmorph.geometry import fix_PA_ell
+from pycasso.util import radialProfileExact
+from specmorph.geometry import fix_PA_ell, distance
 from imfit import Imfit, SimpleModelDescription, function_description
 import sys
 
 star = sys.argv[1]
 date = sys.argv[2]
 grating = sys.argv[3]
-cube = '../../../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
-psfradius = 7
-psfLstep = 200.0 # /AA
-badpix_frac = 0.5
+func = sys.argv[4] # 'Kolmogorov', 'Moffat, 'Gaussian'
 
-debug = False
-i_plot = 3
+cube = '../../../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
+psfLstep = 400.0 # /AA
+badpix_frac = 0.5
+sigma2fwhm = 2.0 * np.sqrt(2.0 * np.log(2.0))
+debug = True
+
+print 'Fitting %s profiles' % func
 
 f = pyfits.open(cube)
-lambda0 = f[0].header['CRVAL3']
-dlambda = f[0].header['CDELT3']
+h = f[0].header
+lambda0 = h['CRVAL3']
+dlambda = h['CDELT3']
+
 _mask = f[3].data
 _flux = np.ma.array(f[0].data, mask=_mask)
+_err = np.ma.array(f[1].data, mask=_mask)
 wl = np.arange(lambda0, lambda0 + (_flux.shape[0]) * dlambda, dlambda)
+
 image = _flux.sum(axis=0)
 y0, x0 = np.where(image == np.nanmax(image))
-print 'Galaxy center: ', y0, x0
-f.close()
+r = distance(image.shape, x0, y0)
+r_mask = r > 30
+max_valid_pix = (~r_mask).sum()
 
-if debug:
-    plt.clf()
-    plt.ioff()
-    plt.imshow(_flux[i_plot])
-    plt.colorbar()
-    plt.show()
+_flux[:, r_mask] = np.ma.masked
+_err[:, r_mask] = np.ma.masked
+
+
+print 'Estimated star center: ', y0, x0
+f.close()
 
 psfLstep_ix = int(np.ceil(psfLstep / dlambda))
 wl_ix = np.arange(0, len(wl), psfLstep_ix)
-flux = np.ma.empty((len(wl_ix), _flux.shape[1], _flux.shape[2]))
-mask = np.ma.empty((len(wl_ix), _flux.shape[1], _flux.shape[2]), dtype='bool')
-for i, j in enumerate(wl_ix):
-    print 'Computing binned image %d of %d (@ %.1f \\AA)' % (i, len(wl_ix), wl[j])
-    l_radius = psfLstep_ix / 2
-    j1 = j - l_radius if j > (0 + l_radius) else 0
-    j2 = j + l_radius if j < (wl_ix[-1] - l_radius) else wl_ix[-1]
-    mask[i] = _mask[j1:j2].sum(axis=0) > badpix_frac * (j2 - j1)
-    flux[i] = np.ma.sum(_flux[j1:j2], axis=0)
-    
-flux /= flux.max()
-
 psf_wl = wl[wl_ix]
 
+flux = np.ma.empty((len(wl_ix), _flux.shape[1], _flux.shape[2]))
+err = np.ma.empty((len(wl_ix), _flux.shape[1], _flux.shape[2]))
 
-if debug:
-    plt.clf()
-    plt.ioff()
-    plt.imshow(flux[i_plot])
-    plt.colorbar()
-    plt.show()
 
-    bins = np.arange(0, 10)
-    bins_c = bins[:-1] + 0.5
-    pa = 90.0
-    ba = 1.0
-    flux_r = radialProfile(flux[i_plot], bins, x0, y0, pa, ba)
-    
-    plt.clf()
-    plt.plot(bins_c, flux_r)
-    plt.show()
+for i, j in enumerate(wl_ix):
+    j1 = j
+    j2 = j + psfLstep_ix
+    if j2 >= len(wl): j2 = len(wl) - 1
+    jc = (j1 + j2) / 2
+    print i, j, j1, jc, j2
+    print 'Computing binned image %d of %d (@ %.1f \\AA)' % (i, len(wl_ix), wl[jc])
+    max_npts = psfLstep_ix
+    masked_pts = _flux.mask[j1:j2].sum(axis=0)
+    mask = masked_pts > (badpix_frac * max_npts)
+    flux[i] = np.ma.mean(_flux[j1:j2], axis=0)
+    flux[i, mask] = np.ma.masked
+    err[i] = np.sqrt(np.ma.sum(_err[j1:j2]**2, axis=0))
+    err[i, mask] = np.ma.masked
 
-moffat = function_description('Moffat')
-moffat.PA.setValue(60, vmin=-190, vmax=190)
-moffat.ell.setValue(0.2, vmin=-1.0, vmax=1.0)
-moffat.I_0.setValue(1.0, vmin=1e-20, vmax=10.0)
-moffat.fwhm.setValue(2.5, vmin=1e-20, vmax=20.0)
-moffat.beta.setValue(1.9, vmin=1e-20, vmax=20.0)
+flux[flux <= 0.0] = np.ma.masked
+
+#w = 0.1 * (r + 2.0)**2
+#w /= w.sum()
+#err *= w
+
+fmax = flux.max()
+fnorm = fmax
+#fnorm = 1.0
+flux /= fnorm
+err /= fnorm
+
+psf_func = function_description(func, 'psf')
+psf_func.PA.setValue(0.0, vmin=-190, vmax=190)
+psf_func.ell.setValue(0.2, vmin=-1.0, vmax=1.0)
+psf_func.I_0.setValue(fmax / fnorm, vmin=1e-20, vmax=10.0 * fmax / fnorm)
+if func == 'Gaussian':
+    psf_func.sigma.setValue(1.0, vmin=1e-20, vmax=20.0)
+else:
+    psf_func.fwhm.setValue(3.0, vmin=1e-20, vmax=20.0)
+if func == 'Moffat':
+    psf_func.beta.setValue(2.0, vmin=1.0, vmax=20.0)
+
 model = SimpleModelDescription()
 model.x0.setValue(x0)
-model.x0.setLimitsRel(15, 15)
+model.x0.setLimitsRel(5, 5)
 model.y0.setValue(y0)
-model.y0.setLimitsRel(15, 15)
-model.addFunction(moffat)
+model.y0.setLimitsRel(5, 5)
+model.addFunction(psf_func)
 
 print 'Initial PSF model:'
 print model
@@ -96,42 +109,112 @@ psfflags = []
 goodfraction = []
 chi2 = []
 for i in xrange(flux.shape[0]):
-    print 'Fitting PSF %d of %d' % (i, flux.shape[0])
+    wl = psf_wl[i]
+    print 'Fitting PSF %d of %d (%d)' % (i, flux.shape[0], wl)
     imfit = Imfit(model, quiet=True)
-    imfit.fit(flux[i], mode='NM', use_model_for_errors=True)
-    _goodfraction = float(imfit.nValidPixels) / float(flux[i].size)
+    imfit.fit(flux[i], mode='NM',
+              use_model_for_errors=False)
+    _goodfraction = float(imfit.nValidPixels) / float(max_valid_pix)
     goodfraction.append(_goodfraction)
-    psfflags.append(not imfit.fitConverged)
+    flagged = not imfit.fitConverged or _goodfraction < 0.7
+    psfflags.append(flagged)
     print '    Fit statistic: %f' % imfit.fitStatistic
-    chi2.append(imfit.fitStatistic)
+    print '    Reduced fit statistic: %f' % imfit.reducedFitStatistic
+    print '    Valid pix: %.1f %%' % (_goodfraction * 100.0)
+    print '    Flagged? %s' % flagged
+    
+    chi2.append(imfit.reducedFitStatistic)
     fitmodel = imfit.getModelDescription()
     modelimage = imfit.getModelImage()
     psfmodels.append(fitmodel)
+    print fitmodel
     if debug:
-        print fitmodel
 
+#         plt.clf()
+#         plt.imshow(flux[i])
+#         plt.colorbar()
+#         plt.show()
+#         plt.clf()
+#         plt.imshow(err[i])
+#         plt.colorbar()
+#         plt.show()
+#         
+#         bins = np.arange(0, 10)
+#         bins_c = bins[:-1] + 0.5
+#         pa = fitmodel.psf.PA.value
+#         ell = fitmodel.psf.ell.value
+#         pa, ell = fix_PA_ell(pa, ell)
+#         pa = np.pi * pa / 180.0
+#         ba = 1.0 - ell
+#         residual = flux[i] - modelimage
+#         flux_r = radialProfileExact(flux[i], bins, fitmodel.x0.value - 1, fitmodel.y0.value - 1, pa, ba)
+#         flux_model_r = radialProfileExact(modelimage, bins, fitmodel.x0.value - 1, fitmodel.y0.value - 1, pa, ba)
+#         residual_r = radialProfileExact(residual, bins, fitmodel.x0.value - 1, fitmodel.y0.value - 1, pa, ba)
+#          
+#         plt.clf()
+#         plt.plot(bins_c, flux_r)
+#         plt.plot(bins_c, flux_model_r)
+#         plt.plot(bins_c, residual_r)
+#         plt.show()
+
+        norm = flux[i].max()
+        imradius = 10
+        x0 = int(fitmodel.x0.value)
+        y0 = int(fitmodel.y0.value)
+        xslice = slice(x0 - imradius, x0 + imradius)
+        yslice = slice(y0 - imradius, y0 + imradius)
+        residual = flux[i] - modelimage
+    
+        plt.ioff()
         plt.clf()
-        plt.imshow(flux[i])
-        plt.colorbar()
-        plt.show()
+        fig = plt.figure(1, figsize=(10, 7))
+        gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
+        ax = plt.subplot(gs[0,0])
+        im = ax.imshow(flux[i, yslice, xslice] / norm, vmin=0.0, vmax=1.1, cmap='OrRd')
+        plt.colorbar(im, ax=ax)
+        ax.set_title('original')
+        ax = plt.subplot(gs[0,1])
+        im = ax.imshow(modelimage[yslice, xslice] / norm, vmin=0.0, vmax=1.1, cmap='OrRd')
+        plt.colorbar(im, ax=ax)
+        ax.set_title('model')
         
-        bins = np.arange(0, 10)
-        bins_c = bins[:-1] + 0.5
-        pa = fitmodel.Moffat.PA.value
-        ell = fitmodel.Moffat.ell.value
+        ax = plt.subplot(gs[0,2])
+        #res_max = max(np.abs(np.min(residual)), np.max(residual))
+        im = ax.imshow(residual[yslice, xslice] / norm, vmin=-0.35, vmax=0.35, cmap='RdBu')
+        plt.colorbar(im, ax=ax)
+        ax.set_title('residual')
+        
+        bins = np.arange(0, imradius)
+        bins_c = bins[:-1]
+        pa = fitmodel.psf.PA.value
+        ell = fitmodel.psf.ell.value
         pa, ell = fix_PA_ell(pa, ell)
         pa = np.pi * pa / 180.0
         ba = 1.0 - ell
-        flux_r = radialProfile(flux[i], bins, fitmodel.x0.value, fitmodel.y0.value,
-                               pa, ba)
-        flux_model_r = radialProfile(flux[i], bins, fitmodel.x0.value, fitmodel.y0.value,
-                                     pa, ba)
+        x0 = fitmodel.x0.value - 1
+        y0 = fitmodel.y0.value - 1
+        f_r = radialProfileExact(flux[i] / norm, bins, x0, y0, pa, ba)
+        model_f_r = radialProfileExact(modelimage / norm, bins, x0, y0, pa, ba)
+        residual_r = radialProfileExact(residual / norm, bins, x0, y0, pa, ba)
          
-        plt.clf()
-        plt.plot(bins_c, flux_r)
-        plt.plot(bins_c, flux_model_r)
+        if func == 'Gaussian':
+            fwhm = sigma2fwhm * fitmodel.psf.sigma.value
+        else:
+            fwhm = fitmodel.psf.fwhm.value
+    
+        ax = plt.subplot(gs[1,:])
+        ax.plot(bins_c, f_r, 'k-', label='original')
+        ax.plot(bins_c, model_f_r, 'k--', label='model')
+        ax.plot(bins_c, residual_r, 'k:', label='residual')
+        ax.vlines(fwhm / 2, -0.1, 1.0, linestyles='dashdot')
+        ax.text(fwhm / 2 + 0.1, f_r.max() / 2 + 0.1, 'FWHM = %.3f "' % fwhm)
+        ax.legend(loc='upper right')
+        ax.set_ylim(-0.1, 1.0)
+        
+        plt.suptitle('%s PSF fit for %s @ %s (%s, %d \\AA)' % (func, star, date, grating, wl))
+    
+        gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
         plt.show()
-
 
 params = np.ma.empty(len(psfmodels), dtype=[('lambda', 'float64'), ('I_0', 'float64'),
                                             ('fwhm', 'float64'), ('beta', 'float64'), 
@@ -139,15 +222,22 @@ params = np.ma.empty(len(psfmodels), dtype=[('lambda', 'float64'), ('I_0', 'floa
                                             ('PA', 'float64'), ('ell', 'float64'),
                                             ('good', 'float64'), ('flag', 'bool'), ('chi2', 'float64')])
 
+psfflags = np.array(psfflags)
 params['lambda'] = psf_wl
-params['I_0'] = [m.Moffat.I_0.value for m in psfmodels]
-params['fwhm'] = [m.Moffat.fwhm.value for m in psfmodels]
-params['beta'] = [m.Moffat.beta.value for m in psfmodels]
+params['I_0'] = [m.psf.I_0.value for m in psfmodels]
+if func == 'Gaussian':
+    params['fwhm'] = [sigma2fwhm * m.psf.sigma.value for m in psfmodels]
+else:
+    params['fwhm'] = [m.psf.fwhm.value for m in psfmodels]
+if func == 'Moffat':
+    params['beta'] = [m.psf.beta.value for m in psfmodels]
+else:
+    params['beta'] = [0.0 for m in psfmodels]
 params['x0'] = [m.x0.value for m in psfmodels]
 params['y0'] = [m.y0.value for m in psfmodels]
 PA = []
 ell = []
-for _PA, _ell in zip([m.Moffat.PA.value for m in psfmodels], [m.Moffat.ell.value for m in psfmodels]):
+for _PA, _ell in zip([m.psf.PA.value for m in psfmodels], [m.psf.ell.value for m in psfmodels]):
     _PA, _ell = fix_PA_ell(_PA, _ell)
     PA.append(_PA)
     ell.append(_ell)
@@ -158,8 +248,10 @@ params['flag'] = psfflags
 params['chi2'] = chi2
 params[psfflags] = np.ma.masked
 
+print psfflags
+print params['flag']
 header =' '.join(params.dtype.names)
-np.savetxt('out_calib/%s.%s.%s.v1.5.PSF.dat' % (star, date, grating), params, header=header)
+np.savetxt('out_calib/%s_%s.%s.%s.v1.5.PSF.dat' % (func, star, date, grating), params, header=header)
 
 
 def getstats(p, wei):
@@ -168,15 +260,21 @@ def getstats(p, wei):
     p_std = np.sqrt(p_var)
     return p_wei, p_std
 
-wei = np.exp(-2.0 * params['chi2'])
+wei = np.exp(-0.5 * params['chi2'] / params['chi2'].min())
+#wei = np.ones_like(params['fwhm'])
 wei /= np.sum(wei)
 fwhm_wei, fwhm_std = getstats(params['fwhm'], wei)
 beta_wei, beta_std = getstats(params['beta'], wei)
 ell_wei, ell_std = getstats(params['ell'], wei)
+x0_wei, x0_std = getstats(params['x0'], wei)
+y0_wei, y0_std = getstats(params['y0'], wei)
 
 print 'FWHM = %.3f +- %.3f' % (fwhm_wei, fwhm_std)
-print 'beta = %.3f +- %.3f' % (beta_wei, beta_std)
+if func == 'Moffat':
+    print 'beta = %.3f +- %.3f' % (beta_wei, beta_std)
 print 'ell = %.3f +- %.3f' % (ell_wei, ell_std)
+print 'x0 = %.3f +- %.3f' % (x0_wei, x0_std)
+print 'y0 = %.3f +- %.3f' % (y0_wei, y0_std)
 
 plt.clf()
 plt.figure(figsize=(8, 12))
@@ -192,17 +290,18 @@ plt.hlines(fwhm_wei + fwhm_std, psf_wl.min(), psf_wl.max(), linestyles='dotted',
 plt.hlines(fwhm_wei - fwhm_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
 plt.text(psf_wl.min() + 100, fwhm_wei + 0.075, '%.3f' % fwhm_wei)
 
-plt.subplot(512)
-plt.plot(psf_wl, params['beta'], '-k')
-#plt.xlabel(r'wavelength $[\AA]$')
-plt.gca().set_xticklabels([])
-plt.ylabel(r'$\beta$')
-#plt.ylim(0.0, 4.0)
-plt.xlim(psf_wl.min(), psf_wl.max())
-plt.hlines(beta_wei, psf_wl.min(), psf_wl.max(), linestyles='dashed', colors='k')
-plt.hlines(beta_wei + beta_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
-plt.hlines(beta_wei - beta_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
-plt.text(psf_wl.min() + 100, beta_wei + 0.075, '%.3f' % beta_wei)
+if func == 'Moffat':
+    plt.subplot(512)
+    plt.plot(psf_wl, params['beta'], '-k')
+    #plt.xlabel(r'wavelength $[\AA]$')
+    plt.gca().set_xticklabels([])
+    plt.ylabel(r'$\beta$')
+    #plt.ylim(0.0, 4.0)
+    plt.xlim(psf_wl.min(), psf_wl.max())
+    plt.hlines(beta_wei, psf_wl.min(), psf_wl.max(), linestyles='dashed', colors='k')
+    plt.hlines(beta_wei + beta_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
+    plt.hlines(beta_wei - beta_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
+    plt.text(psf_wl.min() + 100, beta_wei + 0.075, '%.3f' % beta_wei)
 
 plt.subplot(513)
 plt.plot(psf_wl, params['ell'], '-k')
@@ -229,6 +328,6 @@ plt.xlabel(r'wavelength $[\AA]$')
 plt.ylabel(r'$\chi^2$')
 plt.xlim(psf_wl.min(), psf_wl.max())
 
-plt.suptitle('PSF Moffat parameters for %s @ %s (%s)' % (star, date, grating))
-plt.savefig('out_calib/%s.%s.%s.v1.5.PSF.png' % (star, date, grating))
+plt.suptitle('%s PSF parameters for %s @ %s (%s)' % (func, star, date, grating))
+plt.savefig('out_calib/%s_%s.%s.%s.v1.5.PSF.png' % (func, star, date, grating))
 
