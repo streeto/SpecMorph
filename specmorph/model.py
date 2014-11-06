@@ -8,7 +8,7 @@ from .geometry import ellipse_params, distance, r50, fix_PA_ell
 from .fitting import fit_image, model_image
 from .util import logger
 
-from imfit import SimpleModelDescription, function_description, parse_config_file
+from imfit import SimpleModelDescription, function_description
 import numpy as np
 from os import unlink, path
 
@@ -181,7 +181,9 @@ def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
         line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
     param_fitted = fit(line, wl[flag_ok], param[flag_ok])
-    return param_fitted(l_obs)
+    param_fitted = param_fitted(l_obs)
+    sigma = np.std(param - param_fitted)
+    return param_fitted, sigma
 ################################################################################
 
 
@@ -191,14 +193,18 @@ def smooth_models(models, wl, degree=1, fix_structural=True):
     smooth_params = np.empty(len(wl), dtype=params[0].dtype)    
     param_wl = params['wl']
     param_flag = params['flag']
+    sigma = {}
 
     for p in params.dtype.names:
         if p in ['wl', 'flag', 'chi2', 'n_pix']: continue
-        smooth_params[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree)
+        smooth_params[p], sigma[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree)
+    delta = {p: 3*sig for p, sig in sigma}
     
     models = []
     for i in xrange(len(smooth_params)):
-        m = BDModel.fromParamVector(smooth_params[i])
+        m = BDModel.fromParamVector(smooth_params[i], delta)
+        m.disk.I_0.setLimits(1e-33, 3.0 * m.disk.I_0.value)
+        m.bulge.I_e.setLimits(1e-33, 3.0 * m.bulge.I_e.value)
         if fix_structural:
             m.x0.fixed=True
             m.y0.fixed=True
@@ -259,7 +265,7 @@ class BDModel(SimpleModelDescription):
 
 
     @classmethod
-    def fromParamVector(cls, p):
+    def fromParamVector(cls, p, delta=None):
         model = cls()
         model.wl = p['wl']
         model.x0.setValue(p['x0'])
@@ -273,6 +279,19 @@ class BDModel(SimpleModelDescription):
         model.disk.h.setValue(p['h'])
         model.disk.PA.setValue(p['PA_d'])
         model.disk.ell.setValue(p['ell_d'])
+        if delta is not None:
+            model.x0.setLimitsRel(delta['x0'], delta['x0'])
+            model.y0.setLimitsRel(delta['y0'], delta['y0'])
+            model.bulge.I_e.setLimitsRel(delta['I_e'], delta['I_e'])
+            model.bulge.r_e.setLimitsRel(delta['r_e'], delta['r_e'])
+            model.bulge.n.setLimitsRel(delta['n'], delta['n'])
+            model.bulge.PA.setLimitsRel(delta['PA_b'], delta['PA_b'])
+            model.bulge.ell.setLimitsRel(delta['ell_b'], delta['ell_b'])
+            model.disk.I_0.setLimitsRel(delta['I_0'], delta['I_0'])
+            model.disk.h.setLimitsRel(delta['h'], delta['h'])
+            model.disk.PA.setLimitsRel(delta['PA_d'], delta['PA_d'])
+            model.disk.ell.setLimitsRel(delta['ell_d'], delta['ell_d'])
+        
         return model
 
         
