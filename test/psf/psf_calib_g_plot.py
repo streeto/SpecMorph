@@ -19,13 +19,18 @@ def getstats(p, wei):
     return p_wei, p_std
 
 func = sys.argv[1]
+beta4 = len(sys.argv) > 2 and sys.argv[2] == 'beta4'
+if beta4:
+    name = '%s_beta4' % (func)
+else:
+    name = func
 
 param_dtype = [('star', 'S40'), ('I_0', 'float64'), 
                ('fwhm', 'float64'), ('beta', 'float64'), 
                ('x0', 'float64'), ('y0', 'float64'), 
                ('PA', 'float64'), ('ell', 'float64'), 
                ('good', 'float64'), ('flag', 'int'), ('chi2', 'float64')]
-params = np.genfromtxt('out_calib/%s_fit_gband.dat' % func, dtype=param_dtype)
+params = np.genfromtxt('out_calib/%s_fit_gband.dat' % name, dtype=param_dtype)
 params = np.ma.array(params, mask=params['flag'] > 0)
 
 wei = np.exp(-0.5 * params['chi2'])
@@ -54,7 +59,7 @@ plt.xlim(r[0], r[1])
 plt.ylim(0, 2)
 plt.xlabel(r'FWHM $[arcsec]$')
 
-if func == 'Moffat':
+if func == 'Moffat' and not beta4:
     plt.subplot(212)
     r = [beta_wei - nsigma * beta_std, beta_wei + nsigma * beta_std]
     plt.hist(params['beta'].compressed(), weights=wei.compressed(), bins=nbin, range=r, normed=True, histtype='step')
@@ -68,4 +73,4 @@ if func == 'Moffat':
 
 plt.suptitle(func)
 plt.tight_layout()
-plt.savefig('out_calib/%s_PSF_gband.png' % func)
+plt.savefig('out_calib/%s_PSF_gband.png' % name)
