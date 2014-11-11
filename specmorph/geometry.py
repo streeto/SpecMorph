@@ -193,8 +193,8 @@ def distance(shape, x0=0.0, y0=0.0, pa=0.0, ell=0.0):
 
     '''
     y, x = np.indices(shape)
-    y -= y0
-    x -= x0
+    y = y - y0
+    x = x - x0
     x2 = x**2
     y2 = y**2
     xy = x * y
