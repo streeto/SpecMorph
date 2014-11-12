@@ -10,7 +10,14 @@ import glob
 from os import path
 import sys
 
-galaxiesV500 = glob.glob(path.join(sys.argv[1], '*.V500.v1.5.PSF.dat'))
+func = sys.argv[3] # 'Kolmogorov', 'Moffat, 'Gaussian'
+beta4 = len(sys.argv) > 3 and sys.argv[3] == 'beta4'
+if beta4:
+    name = '%s_beta4' % (func)
+else:
+    name = func
+
+galaxiesV500 = glob.glob(path.join(sys.argv[1], '%s_*.V500.v1.5.PSF.dat' % name))
 print galaxiesV500
 param_dtype = [('lambda', 'float64'), ('I_0', 'float64'),
                ('fwhm', 'float64'), ('beta', 'float64'), 
@@ -90,23 +97,25 @@ plt.gca().set_xticklabels([])
 plt.ylim(0.0, 5.0)
 plt.xlim(wlmin, wlmax)
 
-plt.subplot(212)
-plt.plot(wlV500, betaV500.mean(axis=0), 'r-')
-plt.plot(wlV500, betaV500.mean(axis=0) - betaV500.std(axis=0), 'r--')
-plt.plot(wlV500, betaV500.mean(axis=0) + betaV500.std(axis=0), 'r--')
-#plt.plot(wlV1200, betaV1200.mean(axis=0), 'b-')
-#plt.plot(wlV1200, betaV1200.mean(axis=0) + betaV1200.std(axis=0), 'b--')
-#plt.plot(wlV1200, betaV1200.mean(axis=0) - betaV1200.std(axis=0), 'b--')
-plt.ylabel(r'$\beta$')
-plt.xlabel(r'wavelength $[\AA]$')
-plt.ylim(0.0, 4.0)
-plt.xlim(wlmin, wlmax)
+if func == 'Moffat' and not beta4:
+    plt.subplot(212)
+    plt.plot(wlV500, betaV500.mean(axis=0), 'r-')
+    plt.plot(wlV500, betaV500.mean(axis=0) - betaV500.std(axis=0), 'r--')
+    plt.plot(wlV500, betaV500.mean(axis=0) + betaV500.std(axis=0), 'r--')
+    #plt.plot(wlV1200, betaV1200.mean(axis=0), 'b-')
+    #plt.plot(wlV1200, betaV1200.mean(axis=0) + betaV1200.std(axis=0), 'b--')
+    #plt.plot(wlV1200, betaV1200.mean(axis=0) - betaV1200.std(axis=0), 'b--')
+    plt.ylabel(r'$\beta$')
+    plt.xlabel(r'wavelength $[\AA]$')
+    plt.ylim(0.0, 4.0)
+    plt.xlim(wlmin, wlmax)
 
-plt.savefig('PSF_all.png')
+plt.savefig(path.join(sys.argv[1], '%s_PSF_all.png' % name))
 
 print 'Summary:'
 print 'fwhm(a) = %.3f +- %.3f' % (fwhmV500.mean(), fwhmV500.std())
 print 'fwhm(b) = %.3f +- %.3f' % (fwhmV500_b.mean(), fwhmV500_b.std())
-print 'beta = %.3f +- %.3f' % (betaV500.mean(), betaV500.std())
+if func == 'Moffat' and not beta4:
+    print 'beta = %.3f +- %.3f' % (betaV500.mean(), betaV500.std())
 print 'ell = %.3f +- %.3f' % (ellV500.mean(), ellV500.std())
 

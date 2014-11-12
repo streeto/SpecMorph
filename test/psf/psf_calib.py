@@ -7,7 +7,7 @@ Created on 10/09/2014
 import pyfits
 import numpy as np
 import matplotlib.pyplot as plt
-from pycasso.util import radialProfileExact
+from pycasso.util import radialProfile
 from specmorph.geometry import fix_PA_ell, distance
 from imfit import Imfit, SimpleModelDescription, function_description
 import sys
@@ -16,6 +16,11 @@ star = sys.argv[1]
 date = sys.argv[2]
 grating = sys.argv[3]
 func = sys.argv[4] # 'Kolmogorov', 'Moffat, 'Gaussian'
+beta4 = len(sys.argv) > 5 and sys.argv[5] == 'beta4'
+if beta4:
+    name = '%s_beta4' % (func)
+else:
+    name = func
 
 cube = '../../../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
 psfLstep = 400.0 # /AA
@@ -73,13 +78,8 @@ for i, j in enumerate(wl_ix):
 
 flux[flux <= 0.0] = np.ma.masked
 
-#w = 0.1 * (r + 2.0)**2
-#w /= w.sum()
-#err *= w
-
 fmax = flux.max()
 fnorm = fmax
-#fnorm = 1.0
 flux /= fnorm
 err /= fnorm
 
@@ -92,7 +92,10 @@ if func == 'Gaussian':
 else:
     psf_func.fwhm.setValue(3.0, vmin=1e-20, vmax=20.0)
 if func == 'Moffat':
-    psf_func.beta.setValue(2.0, vmin=1.0, vmax=20.0)
+    if beta4:
+        psf_func.beta.setValue(4.0, fixed=True)
+    else:
+        psf_func.beta.setValue(2.0, vmin=1.0, vmax=20.0)
 
 model = SimpleModelDescription()
 model.x0.setValue(x0)
@@ -129,34 +132,6 @@ for i in xrange(flux.shape[0]):
     psfmodels.append(fitmodel)
     print fitmodel
     if debug:
-
-#         plt.clf()
-#         plt.imshow(flux[i])
-#         plt.colorbar()
-#         plt.show()
-#         plt.clf()
-#         plt.imshow(err[i])
-#         plt.colorbar()
-#         plt.show()
-#         
-#         bins = np.arange(0, 10)
-#         bins_c = bins[:-1] + 0.5
-#         pa = fitmodel.psf.PA.value
-#         ell = fitmodel.psf.ell.value
-#         pa, ell = fix_PA_ell(pa, ell)
-#         pa = np.pi * pa / 180.0
-#         ba = 1.0 - ell
-#         residual = flux[i] - modelimage
-#         flux_r = radialProfileExact(flux[i], bins, fitmodel.x0.value - 1, fitmodel.y0.value - 1, pa, ba)
-#         flux_model_r = radialProfileExact(modelimage, bins, fitmodel.x0.value - 1, fitmodel.y0.value - 1, pa, ba)
-#         residual_r = radialProfileExact(residual, bins, fitmodel.x0.value - 1, fitmodel.y0.value - 1, pa, ba)
-#          
-#         plt.clf()
-#         plt.plot(bins_c, flux_r)
-#         plt.plot(bins_c, flux_model_r)
-#         plt.plot(bins_c, residual_r)
-#         plt.show()
-
         norm = flux[i].max()
         imradius = 10
         x0 = int(fitmodel.x0.value)
@@ -189,13 +164,14 @@ for i in xrange(flux.shape[0]):
         pa = fitmodel.psf.PA.value
         ell = fitmodel.psf.ell.value
         pa, ell = fix_PA_ell(pa, ell)
-        pa = np.pi * pa / 180.0
+        pa = np.pi * (pa + 90) / 180.0
         ba = 1.0 - ell
         x0 = fitmodel.x0.value - 1
         y0 = fitmodel.y0.value - 1
-        f_r = radialProfileExact(flux[i] / norm, bins, x0, y0, pa, ba)
-        model_f_r = radialProfileExact(modelimage / norm, bins, x0, y0, pa, ba)
-        residual_r = radialProfileExact(residual / norm, bins, x0, y0, pa, ba)
+        f_r = radialProfile(flux[i] / norm, bins, x0, y0, pa, ba)
+        err_r = radialProfile(flux[i] / norm, bins, x0, y0, pa, ba, mode='std')
+        model_f_r = radialProfile(modelimage / norm, bins, x0, y0, pa, ba)
+        residual_r = radialProfile(residual / norm, bins, x0, y0, pa, ba)
          
         if func == 'Gaussian':
             fwhm = sigma2fwhm * fitmodel.psf.sigma.value
@@ -203,15 +179,19 @@ for i in xrange(flux.shape[0]):
             fwhm = fitmodel.psf.fwhm.value
     
         ax = plt.subplot(gs[1,:])
-        ax.plot(bins_c, f_r, 'k-', label='original')
+        ax.errorbar(bins_c, f_r, err_r, linestyle='-', color='k', ecolor='k', label='original')
         ax.plot(bins_c, model_f_r, 'k--', label='model')
         ax.plot(bins_c, residual_r, 'k:', label='residual')
-        ax.vlines(fwhm / 2, -0.1, 1.0, linestyles='dashdot')
+        ax.vlines(fwhm / 2, -0.1, 1.2, linestyles='dashdot')
         ax.text(fwhm / 2 + 0.1, f_r.max() / 2 + 0.1, 'FWHM = %.3f "' % fwhm)
         ax.legend(loc='upper right')
-        ax.set_ylim(-0.1, 1.0)
-        
-        plt.suptitle('%s PSF fit for %s @ %s (%s, %d \\AA)' % (func, star, date, grating, wl))
+        ax.set_ylim(-0.1, 1.2)
+        ax.set_xlim(-0.1, bins_c.max() + 0.1)
+
+        if beta4:
+            plt.suptitle(r'%s PSF fit with $\beta=4$ for %s @ %s (%s, $%d\,\AA$)' % (func, star, date, grating, wl))
+        else:
+            plt.suptitle(r'%s PSF fit for %s @ %s (%s, $%d\,\AA$)' % (func, star, date, grating, wl))
     
         gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
         plt.show()
@@ -251,7 +231,7 @@ params[psfflags] = np.ma.masked
 print psfflags
 print params['flag']
 header =' '.join(params.dtype.names)
-np.savetxt('out_calib/%s_%s.%s.%s.v1.5.PSF.dat' % (func, star, date, grating), params, header=header)
+np.savetxt('out_calib/%s_%s.%s.%s.v1.5.PSF.dat' % (name, star, date, grating), params, header=header)
 
 
 def getstats(p, wei):
@@ -270,7 +250,7 @@ x0_wei, x0_std = getstats(params['x0'], wei)
 y0_wei, y0_std = getstats(params['y0'], wei)
 
 print 'FWHM = %.3f +- %.3f' % (fwhm_wei, fwhm_std)
-if func == 'Moffat':
+if func == 'Moffat' and not beta4:
     print 'beta = %.3f +- %.3f' % (beta_wei, beta_std)
 print 'ell = %.3f +- %.3f' % (ell_wei, ell_std)
 print 'x0 = %.3f +- %.3f' % (x0_wei, x0_std)
@@ -290,7 +270,7 @@ plt.hlines(fwhm_wei + fwhm_std, psf_wl.min(), psf_wl.max(), linestyles='dotted',
 plt.hlines(fwhm_wei - fwhm_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
 plt.text(psf_wl.min() + 100, fwhm_wei + 0.075, '%.3f' % fwhm_wei)
 
-if func == 'Moffat':
+if func == 'Moffat' and not beta4:
     plt.subplot(512)
     plt.plot(psf_wl, params['beta'], '-k')
     #plt.xlabel(r'wavelength $[\AA]$')
@@ -328,6 +308,9 @@ plt.xlabel(r'wavelength $[\AA]$')
 plt.ylabel(r'$\chi^2$')
 plt.xlim(psf_wl.min(), psf_wl.max())
 
-plt.suptitle('%s PSF parameters for %s @ %s (%s)' % (func, star, date, grating))
-plt.savefig('out_calib/%s_%s.%s.%s.v1.5.PSF.png' % (func, star, date, grating))
+if beta4:
+    plt.suptitle(r'%s PSF parameters with $\beta=4$ for %s @ %s (%s)' % (func, star, date, grating))
+else:
+    plt.suptitle('%s PSF parameters for %s @ %s (%s)' % (func, star, date, grating))
+plt.savefig('out_calib/%s_%s.%s.%s.v1.5.PSF.png' % (name, star, date, grating))
 
