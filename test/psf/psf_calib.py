@@ -18,7 +18,7 @@ grating = sys.argv[3]
 func = sys.argv[4] # 'Kolmogorov', 'Moffat, 'Gaussian'
 beta4 = len(sys.argv) > 5 and sys.argv[5] == 'beta4'
 if beta4:
-    name = '%s_beta4' % (func)
+    name = '%sBeta4' % (func)
 else:
     name = func
 
@@ -66,7 +66,6 @@ for i, j in enumerate(wl_ix):
     j2 = j + psfLstep_ix
     if j2 >= len(wl): j2 = len(wl) - 1
     jc = (j1 + j2) / 2
-    print i, j, j1, jc, j2
     print 'Computing binned image %d of %d (@ %.1f \\AA)' % (i, len(wl_ix), wl[jc])
     max_npts = psfLstep_ix
     masked_pts = _flux.mask[j1:j2].sum(axis=0)
@@ -228,8 +227,6 @@ params['flag'] = psfflags
 params['chi2'] = chi2
 params[psfflags] = np.ma.masked
 
-print psfflags
-print params['flag']
 header =' '.join(params.dtype.names)
 np.savetxt('out_calib/%s_%s.%s.%s.v1.5.PSF.dat' % (name, star, date, grating), params, header=header)
 
@@ -295,7 +292,7 @@ plt.hlines(ell_wei + ell_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', c
 plt.hlines(ell_wei - ell_std, psf_wl.min(), psf_wl.max(), linestyles='dotted', colors='k')
 plt.text(psf_wl.min() + 100, ell_wei, '%.3f' % ell_wei)
 plt.subplot(514)
-plt.plot(psf_wl, PA, '-k')
+plt.plot(psf_wl, params['PA'], '-k')
 #plt.xlabel(r'wavelength $[\AA]$')
 plt.gca().set_xticklabels([])
 plt.ylabel(r'P.A. $[degrees]$')
