@@ -181,9 +181,8 @@ def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
         line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
     param_fitted = fit(line, wl[flag_ok], param[flag_ok])
-    param_fitted = param_fitted(l_obs)
-    sigma = np.std(param - param_fitted)
-    return param_fitted, sigma
+    sigma = np.std(param - param_fitted(wl))
+    return param_fitted(l_obs), sigma
 ################################################################################
 
 
@@ -194,11 +193,13 @@ def smooth_models(models, wl, degree=1, fix_structural=True):
     param_wl = params['wl']
     param_flag = params['flag']
     sigma = {}
+    delta = {}
 
     for p in params.dtype.names:
         if p in ['wl', 'flag', 'chi2', 'n_pix']: continue
         smooth_params[p], sigma[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree)
-    delta = {p: 3*sig for p, sig in sigma}
+        delta[p] =  0.9 * smooth_params[p].mean()
+    #delta = {p: 3*sig for p, sig in sigma.iteritems()}
     
     models = []
     for i in xrange(len(smooth_params)):
