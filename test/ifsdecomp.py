@@ -34,7 +34,7 @@ def parse_args():
                         help='Plot to this file.')
     parser.add_argument('--psf-fwhm', dest='modelPsfFWHM', type=float, default=2.9,
                         help='PSF FWHM (arcseconds) used when modeling.')
-    parser.add_argument('--psf-beta', dest='modelPsfBeta', type=float, default=2.3,
+    parser.add_argument('--psf-beta', dest='modelPsfBeta', type=float, default=4.0,
                         help='PSF beta used when modeling.')
     parser.add_argument('--fix-structural', dest='fixStructural', action='store_true',
                         help='Fix structural parameters in second pass.')

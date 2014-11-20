@@ -33,7 +33,7 @@ def parse_args():
                         help='Directory containing the base spectra.')
     parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=2.9,
                         help='PSF FWHM (arcseconds).')
-    parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=2.3,
+    parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=4.0,
                         help='PSF beta.')
     parser.add_argument('--nx', dest='Nx', type=int, default=77,
                         help='X dimension.')
@@ -141,7 +141,7 @@ norm_params = np.array(norm_model.getParams(), dtype=norm_model.dtype)
 logger.info('Original model at normalization window:\n%s\n' % str(norm_model))
 
 logger.info('Creating PSF (FWHM = %.2f ", beta = %.2f)' % (args.psfFWHM, args.psfBeta))
-PSF = moffat_psf(args.psfFWHM, args.psfBeta, size=15)
+PSF = moffat_psf(args.psfFWHM, args.psfBeta, size=max(args.Nx, args.Ny))
 # Pad image to avoid artifacts at the borders when convolving.
 Ny_psf = PSF.shape[0]
 Nx_psf = PSF.shape[1]
