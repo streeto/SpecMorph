@@ -164,6 +164,7 @@ for i in xrange(imshape_pad[0]):
     for j in xrange(imshape_pad[1]):
         r = bulge_r[i, j]
         tau = tau_r(args.tau0, args.dtau_dr, r)
+        if tau <= 1e-20: tau = 1e-20
         tau_image_pad[i, j] = tau
         bulge_sfh = SyntheticSFH(base.ageBase)
         bulge_sfh.addExp(base.ageBase.max(), tau, 1.0)
