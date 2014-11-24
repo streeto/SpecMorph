@@ -116,9 +116,6 @@ def ellipse_params(image, x0=0.0, y0=0.0):
     y0 : float
         Y coordinate of the origin. Defaults to ``0.0``.
     
-    mask : array, optional
-        Mask containing the pixels to take into account.
-    
     Returns
     -------
     pa : float

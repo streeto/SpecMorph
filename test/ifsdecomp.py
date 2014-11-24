@@ -213,7 +213,7 @@ pdf.savefig()
 
 logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
-logger.info('Model using PSF FWHM = %.2f ", beta = %.2f.' % (args.modelPsfFWHM, args.modelPsfFWHM))
+logger.info('Model using PSF FWHM = %.2f ", beta = %.2f.' % (args.modelPsfFWHM, args.modelPsfBeta))
 decomp.setSynthPSF(FWHM=args.modelPsfFWHM, beta=args.modelPsfBeta, size=15)
 decomp.loadData(wl, full_ifs, full_ifs_noise, np.zeros_like(full_ifs, dtype='bool'))
 
