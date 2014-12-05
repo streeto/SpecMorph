@@ -26,12 +26,13 @@ class IFSDecomposer(object):
         pass
 
 
-    def loadData(self, wl, flux, error, flags):
+    def loadData(self, wl, flux, error, flags, wl_FWHM=None):
         self.wl = wl
         self.flux = flux
         self.error = error
         self.flags = flags
         self.Nl_obs, self.N_y, self.N_x = flux.shape
+        self.wl_FWHM = wl_FWHM
         
         
     def setSynthPSF(self, FWHM=0.0, beta=None, size=15):
@@ -77,6 +78,19 @@ class IFSDecomposer(object):
             noise = self.error[l1:l2] / self.flux_unit
             noise[flag_wl] = np.ma.masked
             sigma2 = np.sum(noise**2, axis=0)
+            if self.wl_FWHM is not None:
+                nl = l2 - l1
+                dl = (self.wl[l2] - self.wl[l1]) / nl
+                theta = self.wl_FWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+                i = np.arange(nl)[:, np.newaxis]
+                j = i.T
+                A = dl / (np.sqrt(2.0 * np.pi) * theta)
+                B = -0.5 * (dl / theta)**2
+                p = A * np.exp(B * (i - j)**2)
+                mask = np.identity(nl, 'bool')
+                p[mask] = 0.0
+                variance = ((noise[np.newaxis,...] * noise) * p[:, :, np.newaxis, np.newaxis]).sum(axis=0).sum(axis=0)
+                sigma2 += variance
             noise = np.sqrt(sigma2) / n_lambda_good
         # HACK: Valid noise should not be zero, but some spectra forget about it.
         flag |= (noise == 0.0)

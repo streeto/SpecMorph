@@ -11,6 +11,7 @@ from ..kinematics import fix_kinematics
 from pycasso.fitsdatacube import fitsQ3DataCube
 import numpy as np
 
+CALIFA_wl_FWHM = 6.0
 
 ################################################################################
 class CALIFADecomposer(IFSDecomposer):
@@ -31,12 +32,13 @@ class CALIFADecomposer(IFSDecomposer):
         self.targetVd = target_vd
         logger.debug('Fixing kinematics...')
         flux, error, flags = fix_kinematics(self.K.l_obs, flux, error, flags,
-                                            self.K.v_0, self.K.v_d, target_vd, nproc)
+                                            self.K.v_0, self.K.v_d, target_vd,
+                                            nproc, wl_FWHM=CALIFA_wl_FWHM)
         logger.debug('Computing IFS from voronoi zone spectra...')
         flux = self.K.zoneToYX(flux, extensive=True, surface_density=False)
         error = self.K.zoneToYX(error, extensive=True, surface_density=False)
         flags = self.K.zoneToYX(flags, extensive=False)
-        self.loadData(wl, flux, error, flags)
+        self.loadData(wl, flux, error, flags, CALIFA_wl_FWHM)
 
 
     def YXToZone(self, prop, extensive=True, surface_density=True):
