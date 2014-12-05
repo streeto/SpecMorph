@@ -68,14 +68,16 @@ class IFSDecomposer(object):
             flag_wl = self.flags[l1:l2].copy()
             flag_wl[masked_wl[l1:l2]] = True
             n_lambda = flag_wl.shape[0]
-            flag = flag_wl.sum(axis=0) > (flag_ratio_threshold * n_lambda)
+            n_lambda_flagged = flag_wl.sum(axis=0)
+            n_lambda_good = n_lambda - n_lambda_flagged
+            flag = n_lambda_flagged > (flag_ratio_threshold * n_lambda)
             f = self.flux[l1:l2] / self.flux_unit
             f[flag_wl] = np.ma.masked
-            f = np.mean(f, axis=0)
+            f = np.sum(f, axis=0) / n_lambda_good
             noise = self.error[l1:l2] / self.flux_unit
             noise[flag_wl] = np.ma.masked
-            noise = 1.0/np.sqrt(np.sum(noise**-2, axis=0))
-            
+            sigma2 = np.sum(noise**2, axis=0)
+            noise = np.sqrt(sigma2) / n_lambda_good
         # HACK: Valid noise should not be zero, but some spectra forget about it.
         flag |= (noise == 0.0)
         f[flag] = np.ma.masked
