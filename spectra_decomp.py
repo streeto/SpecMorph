@@ -7,13 +7,13 @@ Created on Jun 6, 2013
 from specmorph.util import logger
 from specmorph.califa import CALIFADecomposer
 from specmorph.califa.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
-from specmorph.model import BDModel, bd_initial_model, smooth_models
+from specmorph.model import bd_initial_model, smooth_models
 from specmorph.io import save_array, save_compound_array
 
 from tables import openFile, Filters
 import numpy as np
 
-from os import path, unlink
+from os import path
 import argparse
 import time
 import pyfits
@@ -69,6 +69,20 @@ def save_qbick_planes(planes, K, filename):
 
 
 ################################################################################
+def get_line_mask(line_file, wl):
+    import pystarlight.io  # @UnusedImport
+    t = atpy.Table(args.maskFile, type='starlight_mask')
+    masked_wl = np.zeros(decomp.wl.shape, dtype='bool')
+    for i in xrange(len(t)):
+        l_low, l_upp, line_w, line_name = t[i]
+        if line_w > 0.0: continue
+        logger.debug('Masking region: %s' % line_name)
+        masked_wl |= (decomp.wl > l_low) & (decomp.wl < l_upp)
+    return masked_wl
+################################################################################
+
+
+################################################################################
 parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
 
 parser.add_argument('galaxyId', type=str, nargs=1,
@@ -95,9 +109,9 @@ parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
                     help='Spectral running average box step.')
 parser.add_argument('--vd', dest='vd', type=float, default=None,
                     help='Target v_d in km/s.')
-parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=3.6,
+parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=2.9,
                     help='PSF FWHM in arcseconds.')
-parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=None,
+parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=4.0,
                     help='PSF beta parameter for Moffat profile. If not set, use Gaussian.')
 parser.add_argument('--psf-size', dest='psfSize', type=int, default=15,
                     help='PSF size, in pixels. Must be an odd number.')
@@ -105,10 +119,6 @@ parser.add_argument('--overwrite', dest='overwrite', action='store_true',
                     help='Overwrite data.')
 parser.add_argument('--nproc', dest='nproc', type=int, default=None,
                     help='Number of processors to use.')
-parser.add_argument('--multipass', dest='multipass', action='store_true',
-                    help='Use multiple passes and smoothing.')
-parser.add_argument('--smooth-radius', dest='smoothRadius', type=int, default=20,
-                    help='Radius of smoothing kernel, if multipass is enabled.')
 
 args = parser.parse_args()
 galaxyId = args.galaxyId[0]
@@ -135,39 +145,27 @@ initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False, nproc
 logger.debug('Refined initial model:\n%s\n' % initial_model)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
-if not args.multipass:
-    t1 = time.time()
-    models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                               initial_model=initial_model, mode='LM')
-    logger.info('Done modeling, time: %.2f' % (time.time() - t1))
-else:
-    t1 = time.time()
-    if not path.exists(args.maskFile):
-        logger.error('Mask file %s not found.' % args.maskFile)
-        exit(1)
+t1 = time.time()
+if not path.exists(args.maskFile):
+    logger.error('Mask file %s not found.' % args.maskFile)
+    exit(1)
 
-    logger.info('Using mask file %s.' % args.maskFile)
-    t = atpy.Table(args.maskFile, type='starlight_mask')
-    masked_wl = np.zeros(decomp.wl.shape, dtype='bool')
-    for i in xrange(len(t)):
-        l_low, l_upp, line_w, line_name = t[i]
-        if line_w > 0.0: continue
-        logger.info('Masking region: %s' % line_name)
-        masked_wl |= (decomp.wl > l_low) & (decomp.wl < l_upp)
-        
-    models = decomp.fitSpectra(step=50*args.boxStep, box_radius=50*args.boxStep,
-                               initial_model=initial_model, mode='NM', masked_wl=masked_wl)
-    first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-    logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
-
-    t1 = time.time()
-    logger.info('Smoothing parameters.')
-    models = smooth_models(models, decomp.wl, degree=1)
+logger.info('Using mask file %s.' % args.maskFile)
+masked_wl = get_line_mask(args.maskFile, decomp.wl)
     
-    logger.info('Starting second pass modeling...')
-    models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                               initial_model=models, mode='LM', insist=True)
-    logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
+models = decomp.fitSpectra(step=50*args.boxStep, box_radius=25*args.boxStep,
+                           initial_model=initial_model, mode='NM', masked_wl=masked_wl)
+first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
+
+t1 = time.time()
+logger.info('Smoothing parameters.')
+models = smooth_models(models, decomp.wl, degree=1)
+
+logger.info('Starting second pass modeling...')
+models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
+                           initial_model=models, mode='LM', insist=True, masked_wl=masked_wl)
+logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 
 t1 = time.time()
 logger.info('Computing model spectra...')
@@ -276,11 +274,10 @@ t.flush()
 if args.overwrite and 'first_pass_parameters' in grp:
     grp.first_pass_parameters._f_remove()
 
-if args.multipass:
-    t = db.createTable(grp, 'first_pass_parameters', fit_params.dtype, 'Morphology first pass fit parameters', Filters(1, 'blosc'),
-              expectedrows=len(first_pass_params))
-    t.append(first_pass_params)
-    t.flush()
+t = db.createTable(grp, 'first_pass_parameters', fit_params.dtype, 'Morphology first pass fit parameters', Filters(1, 'blosc'),
+          expectedrows=len(first_pass_params))
+t.append(first_pass_params)
+t.flush()
 
 save_array(db, grp, 'qMask', decomp.K.qMask, args.overwrite)
 save_array(db, grp, 'qSignal', decomp.K.qSignal, args.overwrite)
