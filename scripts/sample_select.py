@@ -7,7 +7,7 @@ Created on 10/03/2015
 from asciitable import CommentedHeader
 import numpy as np
 from glob import glob
-from specmorph.califa.morphtable import load_morph_class
+from specmorph.califa.morph_class import load_morph_class
 from pycasso.fitsdatacube import fitsQ3DataCube
 
 
@@ -72,5 +72,7 @@ sample &= t.merger == 0
 sample &= t.barred == 0
 
 t_sample = t.where(sample)
-t_sample.write('../data/sample.txt', type='ascii', Writer=CommentedHeader, overwrite=True)
+t_sample_fname = '../data/sample.txt'
+print 'Writing sample table %s' % t_sample_fname
+t_sample.write(t_sample_fname, type='ascii', Writer=CommentedHeader, overwrite=True)
 
