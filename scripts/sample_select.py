@@ -9,6 +9,8 @@ import numpy as np
 from glob import glob
 from specmorph.califa.morph_class import load_morph_class
 from pycasso.fitsdatacube import fitsQ3DataCube
+from os import path
+import argparse
 
 
 #############################################################################
@@ -16,7 +18,6 @@ def get_califa_id(f):
     '''
     Return the CALIFA ID (as integer) from a PyCASSO datacube filename.
     '''
-    from os import path
     base = path.basename(f)
     califa_id = base[1:5]
     return int(califa_id)
@@ -47,44 +48,68 @@ def load_masterlist(fname):
     return t.rows(np.arange(len(t) - 1))
 #############################################################################
 
+#############################################################################
+def parse_args():
+    parser = argparse.ArgumentParser(description='Spectral Morphological Decomposition - sample select.')
+    
+    parser.add_argument('--sample-id', dest='sampleId', default='sample',
+                        help='Sample name, will become the table file name.')
+    parser.add_argument('--tables-dir', dest='tablesDir', default='data/tables',
+                        help='Tables directory.')
+    parser.add_argument('--cubes-dir', dest='cubesDir', default='../cubes.px1/',
+                        help='PyCASSO cubes directory.')
+    parser.add_argument('--ba-threshold', dest='baThreshold', type=float, default=0.7,
+                    help='Minimum b/a in the sample.')
+    parser.add_argument('--measure-ba', dest='measureBa', action='store_true',
+                    help='Measure b/a instead of using the Master List.')
+    args = parser.parse_args()
+    return args
 
 #############################################################################
 # Load the galaxy data.
 #############################################################################
 
-mc = load_morph_class('../data/tables/morph_eye_class.fits')
+args = parse_args()
+
+mc = load_morph_class(path.join(args.tablesDir, 'morph_eye_class.fits'))
 
 # Mark the available cubes as observed galaxies.
-mc.add_column('observed', np.zeros(len(mc), dtype='int'))
-obs_cubes = glob('../../cubes.px1/*_synthesis_eBR_px1_q043.d14a512.ps03.k1.mE.CCM.Bgsd6e.fits')
-califa_id = np.array([get_califa_id(f) for f in obs_cubes])
-
+obs_cubes = glob(path.join(args.cubesDir, '*_synthesis_eBR_px1_q043.d14a512.ps03.k1.mE.CCM.Bgsd6e.fits'))
+obs_califa_id = np.array([get_califa_id(f) for f in obs_cubes])
 # Make the CALIFA IDs into indices.
-obs_keys = califa_id - 1
+obs_keys = obs_califa_id - 1
+
+mc.add_column('observed', np.zeros(len(mc), dtype='int'))
 mc.observed[obs_keys] = 1
 
-# Measure b/a.
-mc.add_column('ba', np.ones(len(mc), dtype='bool') * -1.0)
-mc.ba[obs_keys] = get_ba(obs_cubes)
+mc.add_column('cube', np.zeros(len(mc), dtype='S128'))
+mc.cube[obs_keys] = obs_cubes
 
-ml = load_masterlist('../data/tables/califa_master_list_rgb.txt')
+if args.measureBa:
+    mc.add_column('ba', np.ones(len(mc), dtype='bool') * -1.0)
+    mc.ba[obs_keys] = get_ba(obs_cubes)
+
+ml = load_masterlist(path.join(args.tablesDir, 'califa_master_list_rgb.txt'))
 #############################################################################
 # Select the sample.
 #############################################################################
 
 type_S0 = 8
-ba_threshold = 0.7
 
-#sample = t.observed == 1
-#sample &= t.ba >= ba_threshold
-sample = ml.ba >= ba_threshold
+sample = mc.observed == 1
+
+if args.measureBa:
+    sample &= mc.ba >= args.baThreshold
+else:
+    sample &= ml.ba >= args.baThreshold
+    
 sample &= mc.type_max >= type_S0
 sample &= mc.type_min <= type_S0
 sample &= mc.merger == 0
 sample &= mc.barred == 0
 
 t_sample = mc.where(sample)
-t_sample_fname = '../data/tables/sample.txt'
+t_sample_fname = path.join(args.tablesDir, '%s.txt' % args.sampleId)
 print 'Writing sample table %s' % t_sample_fname
 t_sample.write(t_sample_fname, type='ascii', Writer=CommentedHeader, overwrite=True)
 
