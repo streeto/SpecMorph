@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MultipleLocator
 import numpy as np
-import tables
 import argparse
 from os import path
+from specmorph.io import DecompContainer
 
 parser = argparse.ArgumentParser(description='Plot Bulge/Disk decomposition.')
 
@@ -27,25 +27,21 @@ galaxyId = args.galaxyId[0]
 sampleId = path.basename(args.sample)
 # HACK: remove the dots in run name.
 
-db = tables.openFile(args.db, 'r')
-grp = db.getNode('/%s/%s' % (sampleId, galaxyId))
-t = grp.fit_parameters
-if 'first_pass_parameters' in grp:
-    has_1p = True
-    t_1p = grp.first_pass_parameters
-    l_obs_1p = t_1p.cols.wl[:]
-    flag_bad_1p = t_1p.cols.flag[:] > 0.0
-else:
-    has_1p = False
+c = DecompContainer()
+c.loadHDF5(args.db, sampleId, galaxyId)
+t = c.fitParams
+t_1p = c.firstPassParams
+l_obs_1p = t_1p['wl'][:]
+flag_bad_1p = t_1p['flag'] > 0.0
 
-box_radius = t.attrs.box_radius
-target_vd = t.attrs.target_vd
-FWHM = t.attrs.FWHM
-galaxyName = t.attrs.object_name
-flux_unit = t.attrs.flux_unit
-flag_ok = (t.cols.flag[:] == 0.0)
-flag_bad = (t.cols.flag[:] > 0.0)
-fit_l_obs = t.cols.wl[:]
+box_radius = c.attrs['box_radius']
+target_vd = c.attrs['target_vd']
+FWHM = c.attrs['FWHM']
+galaxyName = c.attrs['object_name']
+flux_unit = c.attrs['flux_unit']
+flag_bad = t['flag'] > 0.0
+flag_ok = ~flag_bad
+fit_l_obs = t['wl']
 
 colnames = [
             'I_0',
@@ -126,13 +122,13 @@ plotpars = {'legend.fontsize': 8,
             }
 plt.rcParams.update(plotpars)
 plt.ioff()
+pdf = PdfPages('plots/%s_%s.pdf' % (galaxyId, sampleId))
 
 ################################################################################
 ##########
 ########## All fit parameters 
 ##########
 ################################################################################
-pdf = PdfPages('plots/%s_%s.pdf' % (galaxyId, sampleId))
 fig = plt.figure(1, figsize=(8, 7))
 n_rows = 4
 n_cols = 3
@@ -140,12 +136,11 @@ gs = plt.GridSpec(n_rows, n_cols)
 for i, colname in enumerate(colnames):
     if colname is None: continue
     ax = plt.subplot(gs[i])
-    y = np.ma.array(func[colname](t.col(colname)), mask=flag_bad)
+    y = np.ma.array(func[colname](t[colname]), mask=flag_bad)
     l = np.ma.array(fit_l_obs, mask=flag_bad)
-    if has_1p:
-        y_1p = np.ma.array(func[colname](t_1p.col(colname)), mask=flag_bad_1p)
-        l_1p = np.ma.array(l_obs_1p, mask=flag_bad_1p)
-        ax.plot(l_1p, y_1p, '.r')
+    y_1p = np.ma.array(func[colname](t_1p[colname]), mask=flag_bad_1p)
+    l_1p = np.ma.array(l_obs_1p, mask=flag_bad_1p)
+    ax.plot(l_1p, y_1p, '.r')
     ax.plot(l, y, 'k')
     ax.set_ylabel(ylabel[colname])
     ax.xaxis.set_major_locator(MultipleLocator(1000))
@@ -178,14 +173,14 @@ gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
 l1 = l_range[0]
 l2 = l_range[-1]
-x0 = t.cols.x0[0]
-y0 = t.cols.y0[0]
+x0 = t['x0'][0]
+y0 = t['y0'][0]
 
-bulge_im = np.median(grp.bulge.f_obs[l1:l2], axis=0)
+bulge_im = np.median(c.bulge.f_obs[l1:l2], axis=0)
 
-disk_im = np.median(grp.disk.f_obs[l1:l2], axis=0)
+disk_im = np.median(c.disk.f_obs[l1:l2], axis=0)
 
-total_im = np.median(grp.total.f_obs[l1:l2], axis=0)
+total_im = np.median(c.total.f_obs[l1:l2], axis=0)
 
 residual_im = (total_im - disk_im - bulge_im)  / total_im
 
@@ -234,7 +229,6 @@ gs.tight_layout(fig, rect=[0, 0, 1, 0.9])
 pdf.savefig(fig)
 
 
-
 ################################################################################
 ##########
 ########## Fit quality
@@ -245,9 +239,9 @@ gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
 l = np.ma.array(fit_l_obs, mask=flag_bad)
-f_total = np.ma.array(grp.total.f_obs[:,37,37], mask=flag_bad)
-f_disk = np.ma.array(grp.disk.f_obs[:,37,37], mask=flag_bad)
-f_bulge = np.ma.array(grp.bulge.f_obs[:,37,37], mask=flag_bad)
+f_total = np.ma.array(c.total.f_obs[:,37,37], mask=flag_bad)
+f_disk = np.ma.array(c.disk.f_obs[:,37,37], mask=flag_bad)
+f_bulge = np.ma.array(c.bulge.f_obs[:,37,37], mask=flag_bad)
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
@@ -266,8 +260,8 @@ ax.legend()
 
 ax = plt.subplot(gs[2])
 l = np.ma.array(fit_l_obs, mask=flag_bad)
-I_e = np.ma.array(func['I_e'](t.col('I_e')), mask=flag_bad)
-I_0 = np.ma.array(func['I_0'](t.col('I_0')), mask=flag_bad)
+I_e = np.ma.array(func['I_e'](t['I_e']), mask=flag_bad)
+I_0 = np.ma.array(func['I_0'](t['I_0']), mask=flag_bad)
 vmin = min(I_e.min(), I_0.min())
 vmax = max(I_e.max(), I_0.max())
 ax.plot(l, I_0, 'b', label=r'Disk $(I_{0})$')
@@ -287,8 +281,8 @@ ax.set_ylabel(r'$\log\ I$')
 ax.legend()
 
 ax = plt.subplot(gs[3])
-r_e = np.ma.array(func['r_e'](t.col('r_e')), mask=flag_bad)
-h = np.ma.array(func['h'](t.col('h')), mask=flag_bad)
+r_e = np.ma.array(func['r_e'](t['r_e']), mask=flag_bad)
+h = np.ma.array(func['h'](t['h']), mask=flag_bad)
 vmin = min(r_e.min(), h.min())
 vmax = max(r_e.max(), h.max())
 ax.plot(l, h, 'b', label=r'Disk $(h)$')
@@ -335,18 +329,18 @@ for i in xrange(N_cols):
             l2 = len(fit_l_obs) - 1
         l = l1
         while l < l2:
-            if t.cols.flag[l] == 0:
+            if t['flag'][l] == 0:
                 break
             l += 1
         else:
             print 'Only flagged stuff in the interval [%d:%d]' % (fit_l_obs[l1], fit_l_obs[l2])
             l = l1
         wl = fit_l_obs[l]
-        x0 = t.cols.x0[l]
-        y0 = t.cols.y0[l]
-        bulge_im = grp.bulge.f_obs[l]
-        disk_im = grp.disk.f_obs[l]
-        total_im = grp.total.f_obs[l]
+        x0 = t['x0'][l]
+        y0 = t['y0'][l]
+        bulge_im = c.bulge.f_obs[l]
+        disk_im = c.disk.f_obs[l]
+        total_im = c.total.f_obs[l]
         mask = ~np.isnan(total_im)
         pa, ba = getEllipseParams(total_im, x0, y0, mask=mask)
         bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
@@ -370,4 +364,3 @@ gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
 
 pdf.close()
-db.close()

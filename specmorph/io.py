@@ -15,12 +15,12 @@ __all__ = ['IFSContainer', 'DecompContainer']
 ################################################################################
 class IFSContainer(object):
     
-    def __init__(self, wl=None, f_obs=None, f_err=None, f_flag=None, mask=None):
-        self.wl = wl
-        self.f_obs = f_obs
-        self.f_err = f_err
-        self.f_flag = f_flag
-        self.mask = mask
+    def __init__(self):
+        self.wl = None
+        self.f_obs = None
+        self.f_err = None
+        self.f_flag = None
+        self.mask = None
 
         self.i_f_obs = None
         self.i_f_err = None
@@ -68,6 +68,7 @@ class IFSContainer(object):
             parent._f_getChild(name)._f_remove(recursive=True)
         grp = db.createGroup(parent, name)
         
+        save_array(db, grp, 'wl', self.wl, overwrite)
         save_array(db, grp, 'f_obs', self.f_obs, overwrite)
         save_array(db, grp, 'f_err', self.f_err, overwrite)
         save_array(db, grp, 'f_flag', self.f_flag, overwrite)
@@ -77,8 +78,20 @@ class IFSContainer(object):
         save_array(db, grp, 'i_f_flag', self.i_f_flag, overwrite)
         
         
-    def loadHDF5(self):
-        raise NotImplementedError()
+    def loadHDF5(self, db, parent, name):
+        try:
+            grp = parent._f_get_child(name)
+        except:
+            raise Exception('Unable to find the component: %s' % name)
+        
+        self.wl = grp.wl[...]
+        self.f_obs = grp.f_obs[...]
+        self.f_err = grp.f_err[...]
+        self.f_flag = grp.f_flag[...]
+        self.mask = grp.mask[...]
+        self.i_f_obs = grp.i_f_obs[...]
+        self.i_f_err = grp.i_f_err[...]
+        self.i_f_flag = grp.i_f_flag[...]
     
 ################################################################################
 
@@ -155,8 +168,22 @@ class DecompContainer(object):
         t.flush()
 
 
-    def loadHDF5(self):
-        raise NotImplementedError()
+    def loadHDF5(self, db_file, sampleId, galaxyId):
+        with open_file(db_file, 'r') as db:
+            try:
+                grp = db.getNode('/%s/%s' % (sampleId, galaxyId))
+            except:
+                raise Exception('Unable to find the sample or galaxy: %s, %s' % (sampleId, galaxyId))
+    
+            keys = grp.fit_parameters.attrs._v_attrnamesuser
+            for k in keys:
+                self.attrs[k] = getattr(grp.fit_parameters.attrs, k)
+            self.fitParams = grp.fit_parameters.read()
+            self.firstPassParams = grp.first_pass_parameters.read()
+            self.zones = grp.zones[...]
+            self.total.loadHDF5(db, grp, 'total')
+            self.bulge.loadHDF5(db, grp, 'bulge')
+            self.disk.loadHDF5(db, grp, 'disk')
 ################################################################################
 
 
