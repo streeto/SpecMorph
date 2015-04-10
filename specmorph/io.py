@@ -5,7 +5,6 @@ Created on 12/08/2014
 '''
 
 from specmorph.util import logger
-from specmorph.califa import califa_id_str
 from specmorph.califa.qbick import flag_big_error, flag_small_error, calc_sn, integrated_spec
 from tables import open_file, Filters
 from tables.atom import Atom
@@ -123,11 +122,10 @@ class DecompContainer(object):
 
     def writeHDF5(self, db_file, sampleId, galaxyId, overwrite=False):
         with open_file(db_file, 'a') as db:
-            galaxyNode = califa_id_str(galaxyId)
             try:
-                grp = db.getNode('/%s/%s' % (sampleId, galaxyNode))
+                grp = db.getNode('/%s/%s' % (sampleId, galaxyId))
             except:
-                grp = db.createGroup('/%s' % sampleId, galaxyNode, createparents=True)
+                grp = db.createGroup('/%s' % sampleId, galaxyId, createparents=True)
     
             if overwrite and 'first_pass_parameters' in grp:
                 grp.first_pass_parameters._f_remove()

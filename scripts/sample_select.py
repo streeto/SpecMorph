@@ -7,7 +7,8 @@ Created on 10/03/2015
 from asciitable import CommentedHeader
 import numpy as np
 from glob import glob
-from specmorph.califa.tables import load_morph_class, get_califa_id, load_masterlist 
+from specmorph.califa.tables import load_morph_class, load_masterlist
+from specmorph.califa.tables import califa_id_from_cube, califa_id_to_int
 from pycasso.fitsdatacube import fitsQ3DataCube
 from os import path
 import argparse
@@ -54,7 +55,8 @@ mc = load_morph_class(path.join(args.tablesDir, 'morph_eye_class.fits'))
 
 # Mark the available cubes as observed galaxies.
 obs_cubes = glob(path.join(args.cubesDir, '*_synthesis_eBR_px1_q043.d14a512.ps03.k1.mE.CCM.Bgsd6e.fits'))
-obs_califa_id = np.array([get_califa_id(f) for f in obs_cubes])
+obs_califa_str = np.array([califa_id_from_cube(f) for f in obs_cubes])
+obs_califa_id = np.array([califa_id_to_int(c_id) for c_id in obs_califa_str])
 # Make the CALIFA IDs into indices.
 obs_keys = obs_califa_id - 1
 

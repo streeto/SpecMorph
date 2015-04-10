@@ -8,26 +8,34 @@ import atpy
 import numpy as np
 from os import path
 
-__all__ = ['get_califa_id', 'califa_id_str', 'load_morph_class']
+__all__ = ['califa_id_from_cube', 'califa_id_to_str', 'califa_id_to_int', 'load_morph_class']
 
 
 #############################################################################
-def get_califa_id(f):
+def califa_id_from_cube(f):
     '''
-    Return the CALIFA ID (as integer) from a PyCASSO datacube filename.
+    Return the CALIFA ID (as string) from a PyCASSO datacube filename.
     '''
     base = path.basename(f)
-    califa_id = base[1:5]
-    return int(califa_id)
+    return base[0:5]
 #############################################################################
 
 
 #############################################################################
-def califa_id_str(califa_id):
+def califa_id_to_str(califa_id):
     '''
     Convert the CALIFA ID from integer to string (KNNNN).
     '''
     return 'K%04d' % califa_id
+#############################################################################
+
+
+#############################################################################
+def califa_id_to_int(califa_id):
+    '''
+    Convert the CALIFA ID from string (KNNNN) to int.
+    '''
+    return int(califa_id[1:])
 #############################################################################
 
 

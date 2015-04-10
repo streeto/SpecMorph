@@ -5,7 +5,7 @@ Created on Jun 6, 2013
 '''
 
 from specmorph.util import logger
-from specmorph.califa import CALIFADecomposer, save_qbick_images, get_califa_id
+from specmorph.califa import CALIFADecomposer, save_qbick_images, califa_id_from_cube
 from specmorph.model import bd_initial_model, smooth_models
 from specmorph.io import DecompContainer
 
@@ -39,7 +39,7 @@ def load_sample(fname):
 
 ################################################################################
 def decomp(cube, sampleId, args):
-    galaxyId = get_califa_id(cube)
+    galaxyId = califa_id_from_cube(cube)
     logger.info('Starting fit for %s...' % galaxyId)
     dec = CALIFADecomposer(cube, grating='none', nproc=args.nproc)
     dec.setSynthPSF(FWHM=args.psfFWHM, beta=args.psfBeta, size=args.psfSize)
