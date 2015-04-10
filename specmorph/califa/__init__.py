@@ -1,1 +1,2 @@
-from decomposition import CALIFADecomposer
+from .decomposition import *
+from .tables import *

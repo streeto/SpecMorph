@@ -7,21 +7,11 @@ Created on 10/03/2015
 from asciitable import CommentedHeader
 import numpy as np
 from glob import glob
-from specmorph.califa.morph_class import load_morph_class
+from specmorph.califa.tables import load_morph_class, get_califa_id, load_masterlist 
 from pycasso.fitsdatacube import fitsQ3DataCube
 from os import path
 import argparse
 
-
-#############################################################################
-def get_califa_id(f):
-    '''
-    Return the CALIFA ID (as integer) from a PyCASSO datacube filename.
-    '''
-    base = path.basename(f)
-    califa_id = base[1:5]
-    return int(califa_id)
-#############################################################################
 
 #############################################################################
 def get_ba(cubes):
@@ -35,17 +25,6 @@ def get_ba(cubes):
         _pa, _ba = _K.getEllipseParams()
         ba.append(_ba)
     return np.array(ba)
-#############################################################################
-
-#############################################################################
-def load_masterlist(fname):
-    from califa import masterlist  # @UnusedImport
-    import atpy
-    
-    t = atpy.Table(fname, type='califa_masterlist')
-    
-    # remove last item (Mice b)
-    return t.rows(np.arange(len(t) - 1))
 #############################################################################
 
 #############################################################################

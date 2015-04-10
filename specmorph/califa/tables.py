@@ -6,10 +6,43 @@ Created on 12/03/2015
 
 import atpy
 import numpy as np
+from os import path
 
-__all__ = ['load_morph_class']
+__all__ = ['get_califa_id', 'califa_id_str', 'load_morph_class']
 
 
+#############################################################################
+def get_califa_id(f):
+    '''
+    Return the CALIFA ID (as integer) from a PyCASSO datacube filename.
+    '''
+    base = path.basename(f)
+    califa_id = base[1:5]
+    return int(califa_id)
+#############################################################################
+
+
+#############################################################################
+def califa_id_str(califa_id):
+    '''
+    Convert the CALIFA ID from integer to string (KNNNN).
+    '''
+    return 'K%04d' % califa_id
+#############################################################################
+
+
+#############################################################################
+def load_masterlist(fname):
+    from califa import masterlist  # @UnusedImport
+    
+    t = atpy.Table(fname, type='califa_masterlist')
+    
+    # remove last item (Mice b)
+    return t.rows(np.arange(len(t) - 1))
+#############################################################################
+
+
+#############################################################################
 def load_morph_class(fname):
     '''
     Load the morphology classification table from CALIFA
