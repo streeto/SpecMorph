@@ -104,6 +104,7 @@ class DecompContainer(object):
         self.disk = IFSContainer()
         self.mask = None
         self.zones = None
+        self.initialParams = None
         self.firstPassParams = None
         self.fitParams = None
         self.attrs = {}
@@ -158,6 +159,7 @@ class DecompContainer(object):
                            expectedrows=len(self.fitParams))
         for k, val in self.attrs.iteritems():
             t.attrs[k] = val
+        t.attrs['initial_params'] = self.initialParams
         t.append(self.fitParams)
         t.flush()
         
@@ -178,6 +180,9 @@ class DecompContainer(object):
             keys = grp.fit_parameters.attrs._v_attrnamesuser
             for k in keys:
                 self.attrs[k] = getattr(grp.fit_parameters.attrs, k)
+            self.initialParams = self.attrs['initial_params']
+            del self.attrs['initial_params']
+            
             self.fitParams = grp.fit_parameters.read()
             self.firstPassParams = grp.first_pass_parameters.read()
             self.zones = grp.zones[...]

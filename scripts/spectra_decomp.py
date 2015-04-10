@@ -61,8 +61,8 @@ def decomp(cube, sampleId, args):
     t1 = time.time()
     c = DecompContainer()
     c.zones = dec.K.qZones
-    c.attrs = dict(FWHM = args.psfFWHM,
-                   PSF_FWHM=args.psfFWHM,
+    c.initialParams = initial_model.getParams()
+    c.attrs = dict(PSF_FWHM=args.psfFWHM,
                    PSF_beta=args.psfBeta,
                    PSF_size=args.psfSize,
                    box_step=args.boxStep,
@@ -74,7 +74,8 @@ def decomp(cube, sampleId, args):
                    distance_Mpc=dec.K.distance_Mpc,
                    x0=dec.K.x0,
                    y0=dec.K.y0,
-                   target_vd=dec.targetVd)
+                   target_vd=dec.targetVd,
+                   wl_FWHM=decomp.wlFWHM)
     
     models = dec.fitSpectra(step=50*args.boxStep, box_radius=25*args.boxStep,
                             initial_model=initial_model, mode='NM', masked_wl=masked_wl)
