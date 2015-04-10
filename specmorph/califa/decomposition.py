@@ -11,35 +11,48 @@ from ..kinematics import fix_kinematics
 from pycasso.fitsdatacube import fitsQ3DataCube
 import numpy as np
 
-CALIFA_wl_FWHM = 6.0
 
 ################################################################################
 class CALIFADecomposer(IFSDecomposer):
     vdPercentile = 95.0
+    dispFWHM_V500 = 6.0  # AA
+    dispFWHM_V1200 = 2.3 # AA
     
-    def __init__(self, db, target_vd=None, use_fobs=True, nproc=None):
+    def __init__(self, db, target_vd=None, use_fobs=True, grating='none', nproc=None):
         IFSDecomposer.__init__(self)
+        if grating == 'V500':
+            disp_FWHM = self.dispFWHM_V500
+        elif grating == 'V1200':
+            disp_FWHM = self.dispFWHM_V1200
+        elif grating == 'none':
+            disp_FWHM = None
         self.K = fitsQ3DataCube(db, smooth=True)
-        wl = self.K.l_obs
-        if use_fobs:
-            flux = self.K.f_obs
+        flux, error, flags, vel_FWHM = self._fixKinematics(target_vd, disp_FWHM, nproc)
+        if disp_FWHM is not None:
+            wl_FWHM = np.sqrt(vel_FWHM**2 + disp_FWHM**2)
         else:
-            flux = self.K.f_syn
-        error = self.K.f_err
-        flags = self.K.f_flag > 0.0
-        if target_vd is None:
-            target_vd = np.percentile(self.K.v_d, self.vdPercentile)
-        self.targetVd = target_vd
-        logger.debug('Fixing kinematics...')
-        flux, error, flags = fix_kinematics(self.K.l_obs, flux, error, flags,
-                                            self.K.v_0, self.K.v_d, target_vd,
-                                            nproc, wl_FWHM=CALIFA_wl_FWHM)
+            wl_FWHM = None
         logger.debug('Computing IFS from voronoi zone spectra...')
         flux = self.K.zoneToYX(flux, extensive=True, surface_density=False)
         error = self.K.zoneToYX(error, extensive=True, surface_density=False)
         flags = self.K.zoneToYX(flags, extensive=False)
-        self.loadData(wl, flux, error, flags, CALIFA_wl_FWHM)
+        self.loadData(self.K.l_obs, flux, error, flags, wl_FWHM)
 
+
+    def _fixKinematics(self, target_vd, wl_FWHM=None, nproc=None):
+        flags = self.K.f_flag > 0.0
+        if target_vd is None:
+            target_vd = np.percentile(self.K.v_d, self.vdPercentile)
+        self.targetVd = target_vd
+        c = 2.997925e5
+        lambda_zero = 5500.0
+        dl = lambda_zero * target_vd / c
+        logger.debug('Fixing kinematics: v_d = %.1f km/s (%.1f \\AA @ 5500 \\AA) ...' % (target_vd, dl))
+        flux, error, flags = fix_kinematics(self.K.l_obs, self.K.f_obs, self.K.f_err, flags,
+                                            self.K.v_0, self.K.v_d, target_vd,
+                                            nproc, wl_FWHM)
+        return flux, error, flags, dl
+    
 
     def YXToZone(self, prop, extensive=True, surface_density=True):
         if prop.ndim == 2:
@@ -60,6 +73,7 @@ class CALIFADecomposer(IFSDecomposer):
                 _p *= self.K.parsecPerPixel**2
             prop__z[_z] = _p
         return prop__z
+    
     
     def _YXToZoneNd(self, prop, extensive=True, surface_density=True):
         if prop.ndim <= 2:
