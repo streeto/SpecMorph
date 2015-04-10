@@ -5,301 +5,178 @@ Created on Jun 6, 2013
 '''
 
 from specmorph.util import logger
-from specmorph.califa import CALIFADecomposer
-from specmorph.califa.qbick import integrated_spec, flag_big_error, flag_small_error, calc_sn
+from specmorph.califa import CALIFADecomposer, save_qbick_images, get_califa_id
 from specmorph.model import bd_initial_model, smooth_models
-from specmorph.io import save_array, save_compound_array
+from specmorph.io import DecompContainer
 
-from tables import openFile, Filters
 import numpy as np
-
 from os import path
 import argparse
 import time
-import pyfits
 import atpy
 
 
 ################################################################################
-def get_planes_image(l_obs, f__lz, l_mask, decomp):
-    f_obs = np.ma.masked_invalid(f__lz['f_obs'][l_mask], copy=True)
-    f_obs.fill_value = 0.0
-    f_obs = f_obs.filled()
-
-    f_flag = f__lz['f_flag'][l_mask]
-    l = l_obs[l_mask]
-    # FIXME: Dezonification?
-    f_obs__lyx = decomp.zoneToYX(f_obs, extensive=True, surface_density=False).filled()
-    f_flag__lyx = decomp.zoneToYX(f_flag, extensive=False).filled()
-    
-    planes = np.zeros(shape=(decomp.N_y, decomp.N_x),
-                      dtype=[('Signal', 'float64'), ('Noise', 'float64'),
-                             ('Sn', 'float64'), ('ZonesNoise', 'float64'),
-                             ('ZonesSn', 'float64')])
-
-    _, qZoneNoise__z, qZoneSn__z = calc_sn(l, f_obs, f_flag)
-    planes['ZonesNoise'] = decomp.zoneToYX(qZoneNoise__z, extensive=False, fill_value=0.0).filled()
-    planes['ZonesSn'] = decomp.zoneToYX(qZoneSn__z, extensive=False, fill_value=0.0).filled()
-    
-    mask = decomp.qMask
-    snout = calc_sn(l, f_obs__lyx[:,mask], f_flag__lyx[:,mask])
-    planes['Signal'][mask] = snout[0]
-    planes['Noise'][mask] = snout[1]
-    planes['Sn'][mask] = snout[2]
-    return  planes
-################################################################################
-
-
-################################################################################
-def save_qbick_planes(planes, K, filename):
-    # Update planes
-    phdu = K.getPrimaryHdu()
-    for pname in planes.dtype.names:
-        planeId = K._planeIndex[pname]
-        phdu.data[planeId] = planes[pname]
-        
-    # TODO: remove all pycasso headers
-    for key in phdu.header.keys():
-        if key.startswith('SYN'):
-            phdu.header.remove(key)
-    hdulist = pyfits.HDUList()
-    hdulist.append(phdu)
-    hdulist.writeto(filename, clobber=True)
-################################################################################
-
-
-################################################################################
-def get_line_mask(line_file, wl):
+def load_line_mask(line_file, wl):
     import pystarlight.io  # @UnusedImport
     t = atpy.Table(args.maskFile, type='starlight_mask')
-    masked_wl = np.zeros(decomp.wl.shape, dtype='bool')
+    masked_wl = np.zeros(wl.shape, dtype='bool')
     for i in xrange(len(t)):
         l_low, l_upp, line_w, line_name = t[i]
         if line_w > 0.0: continue
         logger.debug('Masking region: %s' % line_name)
-        masked_wl |= (decomp.wl > l_low) & (decomp.wl < l_upp)
+        masked_wl |= (wl > l_low) & (wl < l_upp)
     return masked_wl
 ################################################################################
 
 
 ################################################################################
-parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
+def load_sample(fname):
+    from asciitable import CommentedHeaderReader
+    return atpy.Table(fname, type='ascii', Reader=CommentedHeaderReader)
+################################################################################
 
-parser.add_argument('galaxyId', type=str, nargs=1,
-                    help='CALIFA galaxy ID. Ex.: K0001')
-parser.add_argument('runId', type=str, nargs=1,
-                    help='runId string. Ex.: eBR_v20_q036.d13c512.ps03.k2.mC.CCM.Bgsd61')
-parser.add_argument('--decomp-id', dest='decompId', default='decomposition',
-                    help='Decomposition label.')
-parser.add_argument('--db', dest='db', default='../cubes.200/',
-                    help='QALIFA database path.')
-parser.add_argument('--db-out', dest='dbOutput', default='decomposition.005.h5',
-                    help='Output HDF5 database path.')
-parser.add_argument('--zone-file-dir', dest='zoneFileDir', default='data/planes',
-                    help='Output QBICK-like multiplane FITS image directory.')
-parser.add_argument('--mask-file', dest='maskFile', default='data/starlight/Mask.mE',
-                    help='Masked wavelengths while performing first pass fit.')
-parser.add_argument('--verbose', dest='verbose', action='store_true',
-                    help='Enable verbose output.')
-parser.add_argument('--use-fsyn', dest='useFsyn', action='store_true',
-                    help='Use synthetic spectra instead of observed.')
-parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
-                    help='Spectral running average box radius.')
-parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
-                    help='Spectral running average box step.')
-parser.add_argument('--vd', dest='vd', type=float, default=None,
-                    help='Target v_d in km/s.')
-parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=2.9,
-                    help='PSF FWHM in arcseconds.')
-parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=4.0,
-                    help='PSF beta parameter for Moffat profile. If not set, use Gaussian.')
-parser.add_argument('--psf-size', dest='psfSize', type=int, default=15,
-                    help='PSF size, in pixels. Must be an odd number.')
-parser.add_argument('--overwrite', dest='overwrite', action='store_true',
-                    help='Overwrite data.')
-parser.add_argument('--nproc', dest='nproc', type=int, default=None,
-                    help='Number of processors to use.')
 
-args = parser.parse_args()
-galaxyId = args.galaxyId[0]
-# HACK: remove the dots in run name.
-runId = args.runId[0]
-groupId = runId.replace('.', '_')    
-
-if args.verbose:
-    logger.setLevel(-1)
-    logger.debug('Verbose output enabled.')
-
-dbfile = path.join(args.db, '%s_synthesis_%s.fits' % (galaxyId, runId))
-
-logger.info('Starting fit for %s...' % galaxyId)
-decomp = CALIFADecomposer(dbfile, use_fobs=not args.useFsyn, nproc=args.nproc)
-decomp.setSynthPSF(FWHM=args.psfFWHM, beta=args.psfBeta, size=args.psfSize)
-
-logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
-t1 = time.time()
-qSignal = np.ma.array(decomp.K.qSignal, mask=~decomp.K.qMask)
-qNoise = np.ma.array(decomp.K.qNoise, mask=~decomp.K.qMask)
-initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False, nproc=args.nproc,
-                                        cache_model_file=dbfile + '.initmodel')
-logger.debug('Refined initial model:\n%s\n' % initial_model)
-logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
-
-t1 = time.time()
-if not path.exists(args.maskFile):
-    logger.error('Mask file %s not found.' % args.maskFile)
-    exit(1)
-
-logger.info('Using mask file %s.' % args.maskFile)
-masked_wl = get_line_mask(args.maskFile, decomp.wl)
+################################################################################
+def decomp(cube, sampleId, args):
+    galaxyId = get_califa_id(cube)
+    logger.info('Starting fit for %s...' % galaxyId)
+    dec = CALIFADecomposer(cube, grating='none', nproc=args.nproc)
+    dec.setSynthPSF(FWHM=args.psfFWHM, beta=args.psfBeta, size=args.psfSize)
     
-models = decomp.fitSpectra(step=50*args.boxStep, box_radius=25*args.boxStep,
-                           initial_model=initial_model, mode='NM', masked_wl=masked_wl)
-first_pass_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
-
-t1 = time.time()
-logger.info('Smoothing parameters.')
-models = smooth_models(models, decomp.wl, degree=1)
-
-logger.info('Starting second pass modeling...')
-models = decomp.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                           initial_model=models, mode='LM', insist=True, masked_wl=masked_wl)
-logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
-
-t1 = time.time()
-logger.info('Computing model spectra...')
-
-f_bulge__lyx, f_disk__lyx = decomp.getModelSpectra(models, args.nproc)
-
-# TODO: better array and dtype handling.
-fit_params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
-
-Nl_obs = decomp.getNSlices(args.boxStep)
-shape__l = (Nl_obs,)
-shape__lz = (Nl_obs, decomp.K.N_zone)
-shape__lyx = (Nl_obs, decomp.N_y, decomp.N_x)
-dtype = np.dtype([('f_obs', 'float64'), ('f_err', 'float64'), ('f_flag', 'float64')])
-fit_l_obs = decomp.wl[::args.boxStep]
-flag_bad_fit = fit_params['flag'][:, np.newaxis] > 0.0
-
-# Zonify component fluxes and ratios.
-f__lz = np.empty(shape=shape__lz, dtype=dtype)
-f__lz['f_obs'] = decomp.YXToZone(decomp.flux[::args.boxStep], extensive=True, surface_density=False)
-f__lz['f_err'] = decomp.YXToZone(decomp.error[::args.boxStep], extensive=True, surface_density=False)
-f__lz['f_flag'] = decomp.YXToZone(decomp.flags[::args.boxStep], extensive=False)
-
-f_bulge__lz = np.zeros(shape=shape__lz, dtype=dtype)
-r_bulge__lz = np.zeros(shape=shape__lz)
-f_bulge__lz['f_obs'] = decomp.YXToZone(f_bulge__lyx, extensive=True, surface_density=False)
-good = f__lz['f_obs'] > 0
-r_bulge__lz[good] = f_bulge__lz['f_obs'][good] / f__lz['f_obs'][good]
-f_bulge__lz['f_err'][good] = np.sqrt(r_bulge__lz[good]) * f__lz['f_err'][good]
-f_bulge__lz['f_flag'] = f__lz['f_flag']
-f_bulge__lz['f_flag'] += flag_big_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'])
-f_bulge__lz['f_flag'] += flag_small_error(f_bulge__lz['f_obs'], f_bulge__lz['f_err'], f_bulge__lz['f_flag'])
-f_bulge__lz['f_flag'] += flag_bad_fit
-
-f_disk__lz = np.zeros(shape=shape__lz, dtype=dtype)
-r_disk__lz = np.zeros(shape=shape__lz)
-f_disk__lz['f_obs'] = decomp.YXToZone(f_disk__lyx, extensive=True, surface_density=False)
-good = f__lz['f_obs'] > 0
-r_disk__lz[good] = f_disk__lz['f_obs'][good] / f__lz['f_obs'][good]
-pos_err = r_disk__lz > 0
-f_disk__lz['f_err'][pos_err] = np.sqrt(r_disk__lz[pos_err]) * f__lz['f_err'][pos_err]
-f_disk__lz['f_flag'] = f__lz['f_flag']
-f_disk__lz['f_flag'] += flag_big_error(f_disk__lz['f_obs'], f_disk__lz['f_err'])
-f_disk__lz['f_flag'] += flag_small_error(f_disk__lz['f_obs'], f_disk__lz['f_err'], f_disk__lz['f_flag'])
-f_disk__lz['f_flag'] += flag_bad_fit
-
-# Integrated spectra
-i_f__l = np.empty(shape=shape__l, dtype=dtype)
-i_f__l['f_obs'], i_f__l['f_err'], i_f__l['f_flag'] = integrated_spec(f__lz['f_obs'],
-                                                                     f__lz['f_err'],
-                                                                     f__lz['f_flag'])
-
-i_f_bulge__l = np.empty(shape=shape__l, dtype=dtype)
-i_f_bulge__l['f_obs'], i_f_bulge__l['f_err'], i_f_bulge__l['f_flag'] = integrated_spec(f_bulge__lz['f_obs'],
-                                                                                       f_bulge__lz['f_err'],
-                                                                                       f_bulge__lz['f_flag'])
-
-i_f_disk__l = np.empty(shape=shape__l, dtype=dtype)
-i_f_disk__l['f_obs'], i_f_disk__l['f_err'], i_f_disk__l['f_flag'] = integrated_spec(f_disk__lz['f_obs'],
-                                                                                    f_disk__lz['f_err'],
-                                                                                    f_disk__lz['f_flag'])
-
-
-logger.info('Creating qbick planes...')
-l_mask = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
-total_planes = get_planes_image(fit_l_obs, f__lz, l_mask, decomp.K)
-save_qbick_planes(total_planes, decomp.K,
-                  path.join(args.zoneFileDir, '%s_%s_%s-total-planes.fits' % (galaxyId, runId, args.decompId)))
-bulge_planes = get_planes_image(fit_l_obs, f_bulge__lz, l_mask, decomp.K)
-save_qbick_planes(bulge_planes, decomp.K,
-                  path.join(args.zoneFileDir, '%s_%s_%s-bulge-planes.fits' % (galaxyId, runId, args.decompId)))
-disk_planes = get_planes_image(fit_l_obs, f_disk__lz, l_mask, decomp.K)
-save_qbick_planes(disk_planes, decomp.K,
-                  path.join(args.zoneFileDir, '%s_%s_%s-disk-planes.fits' % (galaxyId, runId, args.decompId)))
-
-
-logger.info('Saving to storage...')
-db = openFile(args.dbOutput, 'a')
-try:
-    grp = db.getNode('/%s/%s/%s' % (args.decompId, groupId, galaxyId))
-except:
-    grp = db.createGroup('/%s/%s' % (args.decompId, groupId), galaxyId, createparents=True)
+    logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
+    t1 = time.time()
+    if not path.exists(args.maskFile):
+        logger.error('Mask file %s not found.' % args.maskFile)
+        exit(1)
+    logger.info('Using mask file %s.' % args.maskFile)
+    masked_wl = load_line_mask(args.maskFile, dec.wl)
     
-if args.overwrite and 'fit_parameters' in grp:
-    grp.fit_parameters._f_remove()
+    gray_image, gray_noise, _ = dec.getSpectraSlice(0, dec.Nl_obs, masked_wl)
+    initial_model = bd_initial_model(gray_image, gray_noise, dec.PSF, quiet=False, nproc=args.nproc,
+                                            cache_model_file=cube + '.initmodel')
+    logger.debug('Refined initial model:\n%s\n' % initial_model)
+    logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
+    
+    t1 = time.time()
+    c = DecompContainer()
+    c.zones = dec.K.qZones
+    c.attrs = dict(FWHM = args.psfFWHM,
+                   PSF_FWHM=args.psfFWHM,
+                   PSF_beta=args.psfBeta,
+                   PSF_size=args.psfSize,
+                   box_step=args.boxStep,
+                   box_radius=args.boxRadius,
+                   orig_file=cube,
+                   mask_file=args.maskFile, 
+                   object_name=dec.K.galaxyName,
+                   flux_unit=dec.flux_unit,
+                   distance_Mpc=dec.K.distance_Mpc,
+                   x0=dec.K.x0,
+                   y0=dec.K.y0,
+                   target_vd=dec.targetVd)
+    
+    models = dec.fitSpectra(step=50*args.boxStep, box_radius=25*args.boxStep,
+                            initial_model=initial_model, mode='NM', masked_wl=masked_wl)
+    c.firstPassParams = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+    logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
+    
+    t1 = time.time()
+    logger.info('Smoothing parameters.')
+    models = smooth_models(models, dec.wl, degree=1)
+    
+    logger.info('Starting second pass modeling...')
+    models = dec.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
+                            initial_model=models, mode='LM', insist=True, masked_wl=masked_wl)
+    logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
+    
+    t1 = time.time()
+    logger.info('Computing model spectra...')
+    c.total.f_obs = dec.flux[::args.boxStep]
+    c.total.f_err = dec.error[::args.boxStep]
+    c.total.f_flag = dec.flags[::args.boxStep]
+    c.total.mask = dec.K.qMask
+    c.total.wl = dec.wl[::args.boxStep]
+    
+    c.bulge.f_obs, c.disk.f_obs = dec.getModelSpectra(models, args.nproc)
+    c.bulge.mask = dec.K.qMask
+    c.bulge.wl = dec.wl[::args.boxStep]
+    c.disk.mask = dec.K.qMask
+    c.disk.wl = dec.wl[::args.boxStep]
 
-t = db.createTable(grp, 'fit_parameters', fit_params.dtype, 'Morphology fit parameters', Filters(1, 'blosc'),
-              expectedrows=len(fit_params))
-t.attrs.FWHM = args.psfFWHM
-t.attrs.PSF_FWHM = args.psfFWHM
-t.attrs.PSF_beta = args.psfBeta
-t.attrs.PSF_size = args.psfSize
-t.attrs.box_step = args.boxStep
-t.attrs.box_radius = args.boxRadius
-t.attrs.orig_file = dbfile
-t.attrs.object_name = decomp.K.galaxyName
-t.attrs.flux_unit = decomp.flux_unit
-t.attrs.distance_Mpc = decomp.K.distance_Mpc
-t.attrs.x0 = decomp.K.x0
-t.attrs.y0 = decomp.K.y0
-t.attrs.use_fsyn = args.useFsyn
-t.attrs.target_vd = decomp.targetVd
-t.append(fit_params)
-t.flush()
+    # TODO: better array and dtype handling.
+    c.fitParams = np.array([m.getParams() for m in models], dtype=models[0].dtype)
+    
+    flag_bad_fit = c.fitParams['flag'][:, np.newaxis, np.newaxis] > 0.0
+    c.updateErrorsFlags(flag_bad_fit)
+    c.updateIntegratedSpec()
+    
+    logger.info('Saving qbick planes...')
+    fname = path.join(args.zoneFileDir, '%s_%s-planes.fits' % (galaxyId, sampleId))
+    save_qbick_images(c.total, dec, fname, overwrite=args.overwrite)
+    fname = path.join(args.zoneFileDir, '%s_%s-bulge-planes.fits' % (galaxyId, sampleId))
+    save_qbick_images(c.bulge, dec, fname, overwrite=args.overwrite)
+    fname = path.join(args.zoneFileDir, '%s_%s-disk-planes.fits' % (galaxyId, sampleId))
+    save_qbick_images(c.disk, dec, fname, overwrite=args.overwrite)
+    
+    logger.info('Saving to storage...')
+    c.writeHDF5(args.db, sampleId, galaxyId, args.overwrite)
+    logger.info('Storage complete, time: %.2f' % (time.time() - t1))
+    
+    return c
+################################################################################
 
-if args.overwrite and 'first_pass_parameters' in grp:
-    grp.first_pass_parameters._f_remove()
+    
+################################################################################
+def parse_args():
+    parser = argparse.ArgumentParser(description='Perform Bulge/Disk decomposition.')
+    
+    parser.add_argument('--sample', dest='sample', default='data/tables/sample004',
+                        help='Sample table.')
+    parser.add_argument('--db', dest='db', default='data/decomposition.005.h5',
+                        help='Output HDF5 database path.')
+    
+    parser.add_argument('--zone-file-dir', dest='zoneFileDir', default='data/planes',
+                        help='Output QBICK-like multiplane FITS image directory.')
+    parser.add_argument('--mask-file', dest='maskFile', default='data/starlight/Mask.mE',
+                        help='Masked wavelengths while performing first pass fit.')
+    parser.add_argument('--verbose', dest='verbose', action='store_true',
+                        help='Enable verbose output.')
+    
+    parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
+                        help='Spectral running average box radius.')
+    parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
+                        help='Spectral running average box step.')
+    parser.add_argument('--vd', dest='vd', type=float, default=None,
+                        help='Target v_d in km/s.')
+    parser.add_argument('--psf-fwhm', dest='psfFWHM', type=float, default=2.9,
+                        help='PSF FWHM in arcseconds.')
+    parser.add_argument('--psf-beta', dest='psfBeta', type=float, default=4.0,
+                        help='PSF beta parameter for Moffat profile. If not set, use Gaussian.')
+    parser.add_argument('--psf-size', dest='psfSize', type=int, default=15,
+                        help='PSF size, in pixels. Must be an odd number.')
+    parser.add_argument('--overwrite', dest='overwrite', action='store_true',
+                        help='Overwrite data.')
+    parser.add_argument('--nproc', dest='nproc', type=int, default=None,
+                        help='Number of processors to use.')
+    
+    return parser.parse_args()
+################################################################################
 
-t = db.createTable(grp, 'first_pass_parameters', fit_params.dtype, 'Morphology first pass fit parameters', Filters(1, 'blosc'),
-          expectedrows=len(first_pass_params))
-t.append(first_pass_params)
-t.flush()
 
-save_array(db, grp, 'qMask', decomp.K.qMask, args.overwrite)
-save_array(db, grp, 'qSignal', decomp.K.qSignal, args.overwrite)
-save_array(db, grp, 'qZones', decomp.K.qZones, args.overwrite)
+################################################################################
+if __name__ =='__main__':
+    args = parse_args()
+    if args.verbose:
+        logger.setLevel(-1)
+        logger.debug('Verbose output enabled.')
 
-save_compound_array(db, grp, 'qbick_planes', total_planes, args.overwrite)
-save_compound_array(db, grp, 'qbick_planes_bulge', bulge_planes, args.overwrite)
-save_compound_array(db, grp, 'qbick_planes_disk', disk_planes, args.overwrite)
+    sample = load_sample(args.sample)
+    sampleId = path.basename(args.sample)
 
-save_compound_array(db, grp, 'f__lz', f__lz, args.overwrite)
-save_compound_array(db, grp, 'f_bulge__lz', f_bulge__lz, args.overwrite)
-save_compound_array(db, grp, 'f_disk__lz', f_disk__lz, args.overwrite)
+    for gal in sample:
+        cube = gal['cube']
+        c = decomp(cube, sampleId, args)
 
-save_compound_array(db, grp, 'i_f__l', i_f__l, args.overwrite)
-save_compound_array(db, grp, 'i_f_bulge__l', i_f_bulge__l, args.overwrite)
-save_compound_array(db, grp, 'i_f_disk__l', i_f_disk__l, args.overwrite)
 
-save_array(db, grp, 'f_obs__lyx', decomp.flux[::args.boxStep], args.overwrite)
-save_array(db, grp, 'f_bulge__lyx', f_bulge__lyx, args.overwrite)
-save_array(db, grp, 'f_disk__lyx', f_disk__lyx, args.overwrite)
-
-db.close()
-
-logger.info('Storage complete, time: %.2f' % (time.time() - t1))
 

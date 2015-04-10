@@ -88,7 +88,7 @@ sample &= mc.merger == 0
 sample &= mc.barred == 0
 
 t_sample = mc.where(sample)
-t_sample_fname = path.join(args.tablesDir, '%s.txt' % args.sampleId)
+t_sample_fname = path.join(args.tablesDir, args.sampleId)
 print 'Writing sample table %s' % t_sample_fname
 t_sample.write(t_sample_fname, type='ascii', Writer=CommentedHeader, overwrite=True)
 

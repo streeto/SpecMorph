@@ -11,26 +11,24 @@ from matplotlib.ticker import MultipleLocator
 import numpy as np
 import tables
 import argparse
+from os import path
 
 parser = argparse.ArgumentParser(description='Plot Bulge/Disk decomposition.')
 
 parser.add_argument('galaxyId', type=str, nargs=1,
                     help='CALIFA galaxy ID. Ex.: K0001')
-parser.add_argument('runId', type=str, nargs=1,
-                    help='runId string. Ex.: eBR_v20.d13c500.ps03.k1.m0.CCM.Bgsd01.v01')
-parser.add_argument('--decomp-id', dest='decompId', default= 'decomposition',
-                    help='Decomposition label.')
-parser.add_argument('--db', dest='db', default='decomposition.005.h5',
+parser.add_argument('--sample', dest='sample', default= 'sample004',
+                    help='Sample file. Default: sample004.')
+parser.add_argument('--db', dest='db', default='data/decomposition.005.h5',
                     help='HDF5 database path.')
 
 args = parser.parse_args()
 galaxyId = args.galaxyId[0]
+sampleId = path.basename(args.sample)
 # HACK: remove the dots in run name.
-runId = args.runId[0]
-groupname = runId.replace('.', '_')
 
 db = tables.openFile(args.db, 'r')
-grp = db.getNode('/%s/%s/%s' % (args.decompId, groupname, galaxyId))
+grp = db.getNode('/%s/%s' % (sampleId, galaxyId))
 t = grp.fit_parameters
 if 'first_pass_parameters' in grp:
     has_1p = True
@@ -42,7 +40,6 @@ else:
 
 box_radius = t.attrs.box_radius
 target_vd = t.attrs.target_vd
-use_fsyn = t.attrs.use_fsyn
 FWHM = t.attrs.FWHM
 galaxyName = t.attrs.object_name
 flux_unit = t.attrs.flux_unit
@@ -67,17 +64,17 @@ colnames = [
 
 limits = {'I_e': (-18, -16),
           'r_e': (0, 20),
-          'PA_b': (0, 40),
-          'ell_b': (0.6, 0.9),
+          'PA_b': (-5, 185),
+          'ell_b': (-0.05, 1.0),
           'I_0': (-18, -16),
           'h': (0, 20),
-          'PA_d': (0, 40),
-          'ell_d': (0.6, 0.9),
+          'PA_d': (-5, 185),
+          'ell_d': (-0.05, 1.05),
           'x0': None,
           'y0': None,
           'chi2': None,
           'n_pix': None,
-          'n': (2,4),
+          'n': (0.95, 5.05),
           }
 
 ylabel = {'I_e': r'$\log I_e\ [erg / s /cm^2 / \AA]$',
@@ -135,7 +132,7 @@ plt.ioff()
 ########## All fit parameters 
 ##########
 ################################################################################
-pdf = PdfPages('plots/%s_%s_%s.pdf' % (galaxyId, runId, args.decompId))
+pdf = PdfPages('plots/%s_%s.pdf' % (galaxyId, sampleId))
 fig = plt.figure(1, figsize=(8, 7))
 n_rows = 4
 n_cols = 3
@@ -184,14 +181,11 @@ l2 = l_range[-1]
 x0 = t.cols.x0[0]
 y0 = t.cols.y0[0]
 
-bulge_im = np.median(grp.f_bulge__lyx[l1:l2], axis=0)
+bulge_im = np.median(grp.bulge.f_obs[l1:l2], axis=0)
 
-disk_im = np.median(grp.f_disk__lyx[l1:l2], axis=0)
+disk_im = np.median(grp.disk.f_obs[l1:l2], axis=0)
 
-if use_fsyn:
-    total_im = np.median(grp.f_syn__lyx[l1:l2], axis=0)
-else:
-    total_im = np.median(grp.f_obs__lyx[l1:l2], axis=0)
+total_im = np.median(grp.total.f_obs[l1:l2], axis=0)
 
 residual_im = (total_im - disk_im - bulge_im)  / total_im
 
@@ -205,7 +199,7 @@ def getMinMax(image):
 
 vmin, vmax = getMinMax(np.log10(total_im))
 res_vmin, res_vmax = getMinMax(residual_im)
-fit_type = 'syn' if use_fsyn else 'obs'
+fit_type = 'obs'
 
 ax = plt.subplot(gs[1,0])
 im = ax.imshow(np.log10(bulge_im), origin='lower', interpolation='nearest', vmin=vmin, vmax=vmax)
@@ -251,16 +245,13 @@ gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[1])
 l = np.ma.array(fit_l_obs, mask=flag_bad)
-if use_fsyn:
-    f_total = np.ma.array(grp.f_syn__lyx[:,37,37], mask=flag_bad)
-else:
-    f_total = np.ma.array(grp.f_obs__lyx[:,37,37], mask=flag_bad)
-f_disk = np.ma.array(grp.f_disk__lyx[:,37,37], mask=flag_bad)
-f_bulge = np.ma.array(grp.f_bulge__lyx[:,37,37], mask=flag_bad)
+f_total = np.ma.array(grp.total.f_obs[:,37,37], mask=flag_bad)
+f_disk = np.ma.array(grp.disk.f_obs[:,37,37], mask=flag_bad)
+f_bulge = np.ma.array(grp.bulge.f_obs[:,37,37], mask=flag_bad)
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
 vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
-ax.plot(l, f_total, 'k', label='synthetic' if use_fsyn else 'observed')
+ax.plot(l, f_total, 'k', label='observed')
 ax.plot(l, f_disk, 'b', label='disk model')
 ax.plot(l, f_bulge, 'r', label='bulge model')
 ax.plot(l, f_res, 'm', label='residual')
@@ -353,18 +344,15 @@ for i in xrange(N_cols):
         wl = fit_l_obs[l]
         x0 = t.cols.x0[l]
         y0 = t.cols.y0[l]
-        bulge_im = grp.f_bulge__lyx[l]
-        disk_im = grp.f_disk__lyx[l]
-        if use_fsyn:
-            total_im = grp.f_syn__lyx[l]
-        else:
-            total_im = grp.f_obs__lyx[l]
+        bulge_im = grp.bulge.f_obs[l]
+        disk_im = grp.disk.f_obs[l]
+        total_im = grp.total.f_obs[l]
         mask = ~np.isnan(total_im)
         pa, ba = getEllipseParams(total_im, x0, y0, mask=mask)
         bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
         disk_r = radialProfile(disk_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
         total_r = radialProfile(total_im, bin_r, x0, y0, pa, ba, rad_scale=1.0, mask=mask)
-        ax.plot(bin_c, np.log10(total_r), 'k', label='synthetic' if use_fsyn else 'observed')
+        ax.plot(bin_c, np.log10(total_r), 'k', label='observed')
         ax.plot(bin_c, np.log10(disk_r + bulge_r), 'k:', label='model')
         ax.plot(bin_c, np.log10(disk_r), 'b:', label='disk model')
         ax.plot(bin_c, np.log10(bulge_r), 'r:', label='bulge model')

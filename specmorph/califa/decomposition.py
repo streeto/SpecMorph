@@ -20,7 +20,7 @@ class CALIFADecomposer(IFSDecomposer):
     dispFWHM_V500 = 6.0  # AA
     dispFWHM_V1200 = 2.3 # AA
     
-    def __init__(self, db, target_vd=None, use_fobs=True, grating='none', nproc=None):
+    def __init__(self, db, target_vd=None, grating='none', nproc=None):
         IFSDecomposer.__init__(self)
         if grating == 'V500':
             disp_FWHM = self.dispFWHM_V500
