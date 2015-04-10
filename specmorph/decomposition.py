@@ -70,14 +70,15 @@ class IFSDecomposer(object):
             flag_wl[masked_wl[l1:l2]] = True
             n_lambda = flag_wl.shape[0]
             n_lambda_flagged = flag_wl.sum(axis=0)
-            n_lambda_good = n_lambda - n_lambda_flagged
             flag = n_lambda_flagged > (flag_ratio_threshold * n_lambda)
             f = self.flux[l1:l2] / self.flux_unit
-            f[flag_wl] = np.ma.masked
-            f = np.sum(f, axis=0) / n_lambda_good
             noise = self.error[l1:l2] / self.flux_unit
+            f[flag_wl] = np.ma.masked
             noise[flag_wl] = np.ma.masked
-            sigma2 = np.sum(noise**2, axis=0)
+            w = noise**-2
+            w_norm = w.sum(axis=0)
+            f = (f * w).sum(axis=0) / w_norm
+            sigma2 = w_norm**-1
             if self.wl_FWHM is not None:
                 nl = l2 - l1
                 dl = (self.wl[l2] - self.wl[l1]) / nl
@@ -89,11 +90,12 @@ class IFSDecomposer(object):
                 p = A * np.exp(B * (i - j)**2)
                 mask = np.identity(nl, 'bool')
                 p[mask] = 0.0
-                variance = ((noise[np.newaxis,...] * noise) * p[:, :, np.newaxis, np.newaxis]).sum(axis=0).sum(axis=0)
-                sigma2 += variance
-            noise = np.sqrt(sigma2) / n_lambda_good
-        # HACK: Valid noise should not be zero, but some spectra forget about it.
-        flag |= (noise == 0.0)
+                covariance = ((noise[np.newaxis,...] * noise) * p[:, :, np.newaxis, np.newaxis]).sum(axis=0).sum(axis=0)
+                sigma2 += covariance
+            noise = np.sqrt(sigma2)
+        # HACK: Valid flux and noise should not be zero, but some spectra forget about it.
+        flag |= (noise <= 0.0)
+        flag |= (f <= 0.0)
         f[flag] = np.ma.masked
         noise[flag] = np.ma.masked
 
