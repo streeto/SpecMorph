@@ -10,7 +10,9 @@ from ..kinematics import fix_kinematics
 
 from pycasso.fitsdatacube import fitsQ3DataCube
 import numpy as np
+import pyfits
 
+__all__ = ['CALIFADecomposer', 'save_qbick_images']
 
 ################################################################################
 class CALIFADecomposer(IFSDecomposer):
@@ -88,4 +90,29 @@ class CALIFADecomposer(IFSDecomposer):
                 _p *= self.K.parsecPerPixel**2
             prop__z[...,_z] = _p
         return prop__z
+    
+    
+    def getUpdatedQbickHDU(self, new_planes):
+        phdu = self.K.getPrimaryHdu().copy()
+        for pname in new_planes.dtype.names:
+            planeId = self.K._planeIndex[pname]
+            phdu.data[planeId] = new_planes[pname]
+        
+        # TODO: remove all pycasso headers
+        for key in phdu.header.keys():
+            if key.startswith('SYN'):
+                phdu.header.remove(key)
+                
+        return phdu
+
+################################################################################
+
+
+################################################################################
+def save_qbick_images(comp, decomp, filename, overwrite=False):    
+    new_planes = comp.getQbickPlanes()
+    phdu = decomp.getUpdatedQbickHDU(new_planes)
+    hdulist = pyfits.HDUList()
+    hdulist.append(phdu)
+    hdulist.writeto(filename, clobber=overwrite)
 ################################################################################

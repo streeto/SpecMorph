@@ -60,7 +60,13 @@ def get_spec_sum(spec_arr, sper_arr, spef_arr, nz, beta, fg=2.0):
     return np.asarray(spec_sum), np.asarray(sper_sum), spef_sum
 
 
-def integrated_spec(f_obs, f_err, f_flag):
+def integrated_spec(f_obs, f_err, f_flag, mask=None):
+    if mask is not None:
+        if f_obs.ndim != 3:
+            raise Exception('Mask was specified but we don\' have 2-d spectra.')
+        f_obs = f_obs[:, mask]
+        f_err = f_err[:, mask]
+        f_flag = f_flag[:, mask]
     N_zone = f_obs.shape[1]
     beta__z = areafactor(N_zone)
     i_f_obs, i_f_err, i_f_flag = get_spec_sum(f_obs, f_err, f_flag, N_zone, beta__z)
