@@ -32,7 +32,7 @@ class IFSDecomposer(object):
         self.error = error
         self.flags = flags
         self.Nl_obs, self.N_y, self.N_x = flux.shape
-        self.wl_FWHM = wl_FWHM
+        self.wlFWHM = wl_FWHM
         
         
     def setSynthPSF(self, FWHM=0.0, beta=None, size=15):
@@ -79,7 +79,7 @@ class IFSDecomposer(object):
             w_norm = w.sum(axis=0)
             f = (f * w).sum(axis=0) / w_norm
             sigma2 = w_norm**-1
-            if self.wl_FWHM is not None:
+            if self.wlFWHM is not None:
                 nl = l2 - l1
                 dl = (self.wl[l2] - self.wl[l1]) / nl
                 theta = self.wl_FWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))

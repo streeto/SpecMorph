@@ -75,7 +75,7 @@ def decomp(cube, sampleId, args):
                    x0=dec.K.x0,
                    y0=dec.K.y0,
                    target_vd=dec.targetVd,
-                   wl_FWHM=decomp.wlFWHM)
+                   wl_FWHM=dec.wlFWHM)
     
     models = dec.fitSpectra(step=50*args.boxStep, box_radius=25*args.boxStep,
                             initial_model=initial_model, mode='NM', masked_wl=masked_wl)
