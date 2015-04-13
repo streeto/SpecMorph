@@ -4,14 +4,50 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-from pycasso.util import getImageDistance, radialProfile, getEllipseParams
+from specmorph.io import DecompContainer
+from specmorph.model import BDModel, create_model_images
+from specmorph.geometry import ellipse_params
+from imfit.psf import moffat_psf
+from pycasso.util import radialProfile, getEllipseParams
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MultipleLocator
 import numpy as np
 import argparse
 from os import path
-from specmorph.io import DecompContainer
+
+
+################################################################################
+def getMinMax(image):
+    vals = np.ma.masked_invalid(image).compressed()
+    mean = vals.mean()
+    sigma = np.sqrt(vals.var())
+    return mean - 3 * sigma, mean + 3 * sigma
+################################################################################
+
+
+################################################################################
+def plot_setup(plot_file):
+    pdf = PdfPages(plot_file)
+    plotpars = {'legend.fontsize': 8,
+                'xtick.labelsize': 10,
+                'ytick.labelsize': 10,
+                'text.fontsize': 10,
+                'axes.titlesize': 12,
+                'lines.linewidth': 0.5,
+                'font.family': 'Times New Roman',
+    #             'figure.subplot.left': 0.08,
+    #             'figure.subplot.bottom': 0.08,
+    #             'figure.subplot.right': 0.97,
+    #             'figure.subplot.top': 0.95,
+    #             'figure.subplot.wspace': 0.42,
+    #             'figure.subplot.hspace': 0.1,
+                'image.cmap': 'GnBu',
+                }
+    plt.rcParams.update(plotpars)
+    plt.ioff()
+    return pdf
+################################################################################
 
 parser = argparse.ArgumentParser(description='Plot Bulge/Disk decomposition.')
 
@@ -36,12 +72,32 @@ flag_bad_1p = t_1p['flag'] > 0.0
 
 box_radius = c.attrs['box_radius']
 target_vd = c.attrs['target_vd']
-FWHM = c.attrs['FWHM']
+PSF_FWHM = c.attrs['PSF_FWHM']
 galaxyName = c.attrs['object_name']
 flux_unit = c.attrs['flux_unit']
 flag_bad = t['flag'] > 0.0
 flag_ok = ~flag_bad
 fit_l_obs = t['wl']
+
+initial_params = np.array(c.initialParams, dtype=t.dtype)
+initial_model = BDModel.fromParamVector(initial_params)
+psf = moffat_psf(PSF_FWHM, c.attrs['PSF_beta'], size=c.attrs['PSF_size'])
+bulge_model_im, disk_model_im = create_model_images(initial_model, c.total.f_obs.shape[1:], psf) 
+bulge_model_im *= flux_unit
+disk_model_im *= flux_unit
+
+l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
+l1 = l_range[0]
+l2 = l_range[-1]
+l1 = 0
+l2 = -1
+x0 = t['x0'][0]
+y0 = t['y0'][0]
+
+bulge_im = np.median(c.bulge.f_obs[l1:l2], axis=0)
+disk_im = np.median(c.disk.f_obs[l1:l2], axis=0)
+total_im = np.median(c.total.f_obs[l1:l2], axis=0)
+residual_im = (total_im - disk_im - bulge_im)  / total_im
 
 colnames = [
             'I_0',
@@ -107,22 +163,63 @@ func = {'I_e': log10flux,
         'n': nothing,
         }
 
-plotpars = {'legend.fontsize': 8,
-            'xtick.labelsize': 10,
-            'ytick.labelsize': 10,
-            'text.fontsize': 10,
-            'font.family': 'Times New Roman',
-#             'figure.subplot.left': 0.08,
-#             'figure.subplot.bottom': 0.08,
-#             'figure.subplot.right': 0.97,
-#             'figure.subplot.top': 0.95,
-#             'figure.subplot.wspace': 0.42,
-#             'figure.subplot.hspace': 0.1,
-            'image.cmap': 'GnBu',
-            }
-plt.rcParams.update(plotpars)
-plt.ioff()
-pdf = PdfPages('plots/%s_%s.pdf' % (galaxyId, sampleId))
+pdf = plot_setup('plots/%s_%s.pdf' % (galaxyId, sampleId))
+
+################################################################################
+##########
+########## Initial model
+##########
+################################################################################
+vmin, vmax = getMinMax(np.log10(total_im))
+fig = plt.figure(figsize=(8, 6))
+gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
+ax = plt.subplot(gs[0,0])
+ax.imshow(np.log10(total_im), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Total')
+
+ax = plt.subplot(gs[0,1])
+ax.imshow(np.log10(bulge_model_im), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Bulge')
+
+ax = plt.subplot(gs[0,2])
+ax.imshow(np.log10(disk_model_im), vmin=vmin, vmax=vmax)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title(r'Disk')
+
+ax = plt.subplot(gs[1,:])
+bins = np.arange(0, 32)
+bins_c = bins[:-1] + 0.5
+y0 = initial_model.y0.value
+x0 = initial_model.x0.value
+pa_i, ell_i = ellipse_params(total_im, x0, y0)
+pa_i = (90.0 + pa_i) * np.pi / 180.0
+ba_i = 1.0 - ell_i
+mr = radialProfile(np.log10(total_im), bins, x0, y0, pa_i, ba_i)
+br = radialProfile(np.log10(bulge_model_im), bins, x0, y0, pa_i, ba_i)
+dr = radialProfile(np.log10(disk_model_im), bins, x0, y0, pa_i, ba_i)
+ax.plot(bins_c, mr, 'k-', label='Total')
+ax.plot(bins_c, br, 'r-', label='Bulge')
+ax.plot(bins_c, dr, 'b-', label='Disk')
+ax.set_xlabel(r'Radius [arcsec]')
+ax.set_ylabel(r'$\log$ flux (relative)')
+ax.set_xlim(0.0, 30.0)
+ax.set_ylim(mr.min(), mr.max())
+ax.legend(loc='upper right')
+
+tmp = (initial_model.bulge.I_e.value,
+       initial_model.bulge.r_e.value,
+       initial_model.bulge.n.value,
+       initial_model.disk.I_0.value,
+       initial_model.disk.h.value,
+       PSF_FWHM)
+plt.suptitle(r'Initial model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$, $FWHM = %.2f$' % tmp)
+gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+pdf.savefig()
 
 ################################################################################
 ##########
@@ -170,26 +267,6 @@ pdf.savefig(fig)
 fig = plt.figure(2, figsize=(8, 6))
 gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 
-l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
-l1 = l_range[0]
-l2 = l_range[-1]
-x0 = t['x0'][0]
-y0 = t['y0'][0]
-
-bulge_im = np.median(c.bulge.f_obs[l1:l2], axis=0)
-
-disk_im = np.median(c.disk.f_obs[l1:l2], axis=0)
-
-total_im = np.median(c.total.f_obs[l1:l2], axis=0)
-
-residual_im = (total_im - disk_im - bulge_im)  / total_im
-
-
-def getMinMax(image):
-    vals = np.ma.masked_invalid(image).compressed()
-    mean = vals.mean()
-    sigma = np.sqrt(vals.var())
-    return mean - 3 * sigma, mean + 3 * sigma
 
 
 vmin, vmax = getMinMax(np.log10(total_im))
@@ -224,7 +301,7 @@ ax.set_xticks([])
 ax.set_title('$(F^{%s}_\lambda - F^{bulge}_\lambda - F^{disk}_\lambda) / F^{%s}_\lambda$' % (fit_type, fit_type))
 plt.colorbar(im, ax=ax)
 
-plt.suptitle(r'%s - %s | Model images @ $5635\ \AA$, PSF FWHM = $%.1f$ arcsec' % (galaxyName, galaxyId, FWHM))
+plt.suptitle(r'%s - %s | Model images @ $5635\ \AA$, PSF FWHM = $%.1f$ arcsec' % (galaxyName, galaxyId, PSF_FWHM))
 gs.tight_layout(fig, rect=[0, 0, 1, 0.9])
 pdf.savefig(fig)
 
@@ -235,71 +312,51 @@ pdf.savefig(fig)
 ##########
 ################################################################################
 fig = plt.figure(3, figsize=(8, 10))
-gs = plt.GridSpec(4, 1, height_ratios=[-0.2, 1.0, 1.0, 1.0])
+gs = plt.GridSpec(2, 1, height_ratios=[1.0, 1.0])
+ax = plt.subplot(gs[0])
 
-ax = plt.subplot(gs[1])
-l = np.ma.array(fit_l_obs, mask=flag_bad)
-f_total = np.ma.array(c.total.f_obs[:,37,37], mask=flag_bad)
-f_disk = np.ma.array(c.disk.f_obs[:,37,37], mask=flag_bad)
-f_bulge = np.ma.array(c.bulge.f_obs[:,37,37], mask=flag_bad)
+xx = np.round(initial_model.x0.value)
+yy = np.round(initial_model.y0.value)
+
+f_total = c.total.f_obs[:,yy,xx]
+f_disk = c.disk.f_obs[:,yy,xx]
+f_bulge = c.bulge.f_obs[:,yy,xx]
 f_res = f_total - f_disk - f_bulge
-vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
-vmax = max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
-ax.plot(l, f_total, 'k', label='observed')
-ax.plot(l, f_disk, 'b', label='disk model')
-ax.plot(l, f_bulge, 'r', label='bulge model')
-ax.plot(l, f_res, 'm', label='residual')
-ax.vlines(fit_l_obs[flag_bad], vmin, vmax, 'gray', alpha=0.5)
+vmax = 1.05 * max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
+vmin = -2.0 * f_res.std()
+
+ax.plot(fit_l_obs, f_total, 'k', label='observed')
+ax.plot(fit_l_obs, f_res, 'm', label='residual')
+ax.plot(fit_l_obs, f_disk, 'b', label='disk model')
+ax.plot(fit_l_obs, f_bulge, 'r', label='bulge model')
 ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
+ax.set_ylim(vmin, vmax)
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xticklabels([])
 ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
-ax.text(0.1, 0.92, r'%s - %s | $R\ =\ 5\ arcsec$ | $\Delta\lambda\ =\ %d\ \AA$ | $\sigma\ =\ %.1f\, km/s$' % (galaxyName, galaxyId, 4*box_radius+2, target_vd),
-        transform=ax.transAxes)
+ax.set_title(r'Spectra at the nucleus')
 ax.legend()
 
-ax = plt.subplot(gs[2])
-l = np.ma.array(fit_l_obs, mask=flag_bad)
-I_e = np.ma.array(func['I_e'](t['I_e']), mask=flag_bad)
-I_0 = np.ma.array(func['I_0'](t['I_0']), mask=flag_bad)
-vmin = min(I_e.min(), I_0.min())
-vmax = max(I_e.max(), I_0.max())
-ax.plot(l, I_0, 'b', label=r'Disk $(I_{0})$')
-ax.plot(l, I_e, 'r', label=r'Bulge $(I_{e})$')
-if limits['I_0'] is not None:
-    ymin = limits['I_0'][0]
-    ymax = limits['I_0'][1]
-else:
-    ymin = y.min()
-    ymax = y.max()
-ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
-ax.set_ylim(ymin, ymax)
-ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
-ax.xaxis.set_major_locator(MultipleLocator(500))
-ax.set_xticklabels([])
-ax.set_ylabel(r'$\log\ I$')
-ax.legend()
+ax = plt.subplot(gs[1])
+xx = np.ceil(initial_model.x0.value + initial_model.bulge.r_e.value)
+f_total = c.total.f_obs[:,yy,xx]
+f_disk = c.disk.f_obs[:,yy,xx]
+f_bulge = c.bulge.f_obs[:,yy,xx]
+f_res = f_total - f_disk - f_bulge
+vmax = 1.05 * max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
+vmin = -2.0 * f_res.std()
 
-ax = plt.subplot(gs[3])
-r_e = np.ma.array(func['r_e'](t['r_e']), mask=flag_bad)
-h = np.ma.array(func['h'](t['h']), mask=flag_bad)
-vmin = min(r_e.min(), h.min())
-vmax = max(r_e.max(), h.max())
-ax.plot(l, h, 'b', label=r'Disk $(h)$')
-ax.plot(l, r_e, 'r', label=r'Bulge $(r_{e})$')
-if limits['r_e'] is not None:
-    ymin = limits['r_e'][0]
-    ymax = limits['r_e'][1]
-else:
-    ymin = y.min()
-    ymax = y.max()
-ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
-ax.set_ylim(ymin, ymax)
+ax.plot(fit_l_obs, f_total, 'k', label='observed')
+ax.plot(fit_l_obs, f_res, 'm', label='residual')
+ax.plot(fit_l_obs, f_disk, 'b', label='disk model')
+ax.plot(fit_l_obs, f_bulge, 'r', label='bulge model')
 ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
+ax.set_ylim(vmin, vmax)
 ax.xaxis.set_major_locator(MultipleLocator(500))
 ax.set_xlabel(r'wavelength $[\AA]$')
-ax.set_ylabel(r'radius $[arcsec]$')
-ax.legend()
+ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
+ax.set_title(r'Spectra at $R = r_e$ ($%.1f\,arcsec$)' % initial_model.bulge.r_e.value)
+
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 pdf.savefig(fig)
 
