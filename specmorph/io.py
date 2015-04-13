@@ -84,14 +84,18 @@ class IFSContainer(object):
         except:
             raise Exception('Unable to find the component: %s' % name)
         
-        self.wl = grp.wl[...]
-        self.f_obs = grp.f_obs[...]
-        self.f_err = grp.f_err[...]
         self.f_flag = grp.f_flag[...]
+        flag_bad = self.f_flag > 0.0
+        self.wl = grp.wl[...]
         self.mask = grp.mask[...]
-        self.i_f_obs = grp.i_f_obs[...]
-        self.i_f_err = grp.i_f_err[...]
+        
+        self.f_obs = np.ma.array(grp.f_obs[...], mask=flag_bad)
+        self.f_err = np.ma.array(grp.f_err[...], mask=flag_bad)
+
         self.i_f_flag = grp.i_f_flag[...]
+        flag_bad = self.i_f_flag > 0.0
+        self.i_f_obs = np.ma.array(grp.i_f_obs[...], mask=flag_bad)
+        self.i_f_err = np.ma.array(grp.i_f_err[...], mask=flag_bad)
     
 ################################################################################
 
