@@ -4,7 +4,7 @@ Created on Jun 6, 2013
 @author: andre
 '''
 
-from specmorph.util import logger
+from specmorph.util import logger, find_nearest_index
 from specmorph.califa import CALIFADecomposer, save_qbick_images, califa_id_from_cube
 from specmorph.model import bd_initial_model, smooth_models
 from specmorph.io import DecompContainer
@@ -52,9 +52,16 @@ def decomp(cube, sampleId, args):
     logger.info('Using mask file %s.' % args.maskFile)
     masked_wl = load_line_mask(args.maskFile, dec.wl)
     
-    gray_image, gray_noise, _ = dec.getSpectraSlice(0, dec.Nl_obs, masked_wl)
+    l1 = find_nearest_index(dec.wl, 4500.0)
+    l2 = dec.Nl_obs
+    cache_file = cube + '.initmodel'
+    if not path.exists(cache_file):
+        gray_image, gray_noise, _ = dec.getSpectraSlice(l1, l2, masked_wl)
+    else:
+        gray_image = None
+        gray_noise = None
     initial_model = bd_initial_model(gray_image, gray_noise, dec.PSF, quiet=False, nproc=args.nproc,
-                                            cache_model_file=cube + '.initmodel')
+                                            cache_model_file=cache_file)
     logger.debug('Refined initial model:\n%s\n' % initial_model)
     logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
     
