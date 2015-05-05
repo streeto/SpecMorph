@@ -32,6 +32,7 @@ class IFSContainer(object):
                                                                     self.f_err,
                                                                     self.f_flag,
                                                                     self.mask)
+        self.i_f_flag = self.i_f_flag > 0.0
     
 
     def getQbickPlanes(self):
@@ -85,17 +86,15 @@ class IFSContainer(object):
             raise Exception('Unable to find the component: %s' % name)
         
         self.f_flag = grp.f_flag[...]
-        flag_bad = self.f_flag > 0.0
         self.wl = grp.wl[...]
         self.mask = grp.mask[...]
         
-        self.f_obs = np.ma.array(grp.f_obs[...], mask=flag_bad)
-        self.f_err = np.ma.array(grp.f_err[...], mask=flag_bad)
+        self.f_obs = np.ma.array(grp.f_obs[...], mask=self.f_flag)
+        self.f_err = np.ma.array(grp.f_err[...], mask=self.f_flag)
 
         self.i_f_flag = grp.i_f_flag[...]
-        flag_bad = self.i_f_flag > 0.0
-        self.i_f_obs = np.ma.array(grp.i_f_obs[...], mask=flag_bad)
-        self.i_f_err = np.ma.array(grp.i_f_err[...], mask=flag_bad)
+        self.i_f_obs = np.ma.array(grp.i_f_obs[...], mask=self.i_f_flag)
+        self.i_f_err = np.ma.array(grp.i_f_err[...], mask=self.i_f_flag)
     
 ################################################################################
 
@@ -133,9 +132,9 @@ class DecompContainer(object):
         r_comp[good] = comp.f_obs[good] / self.total.f_obs[good]
         comp.f_err[good] = np.sqrt(r_comp[good]) * self.total.f_err[good]
         comp.f_flag = self.total.f_flag.copy()
-        comp.f_flag += flag_big_error(comp.f_obs, comp.f_err)
-        comp.f_flag += flag_small_error(comp.f_obs, comp.f_err, comp.f_flag)
-        comp.f_flag += flag_bad_fit
+        comp.f_flag |= flag_big_error(comp.f_obs, comp.f_err) > 0.0
+        comp.f_flag |= flag_small_error(comp.f_obs, comp.f_err, comp.f_flag) > 0.0
+        comp.f_flag |= flag_bad_fit
 
 
     def writeHDF5(self, db_file, sampleId, galaxyId, overwrite=False):
