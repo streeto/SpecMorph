@@ -50,8 +50,9 @@ class CALIFADecomposer(IFSDecomposer):
         lambda_zero = 5500.0
         dl = lambda_zero * target_vd / c
         logger.debug('Fixing kinematics: v_d = %.1f km/s (%.1f \\AA @ 5500 \\AA) ...' % (target_vd, dl))
-        flux, error, flags = fix_kinematics(self.K.l_obs, self.K.f_obs, self.K.f_err, flags,
-                                            self.K.v_0, self.K.v_d, target_vd,
+        flux, error, flags = fix_kinematics(self.K.l_obs, self.K.f_obs / self.flux_unit,
+                                            self.K.f_err / self.flux_unit,
+                                            flags, self.K.v_0, self.K.v_d, target_vd,
                                             nproc, wl_FWHM)
         return flux, error, flags, dl
     

@@ -62,8 +62,8 @@ class IFSDecomposer(object):
             wl = self.wl[l1]
             flag = self.flags[l1].copy()
             flag[masked_wl[l1]] = True
-            f = self.flux[l1] / self.flux_unit
-            noise = self.error[l1] / self.flux_unit
+            f = self.flux[l1]
+            noise = self.error[l1]
         else:
             wl = np.mean(self.wl[l1:l2])
             flag_wl = self.flags[l1:l2].copy()
@@ -71,8 +71,8 @@ class IFSDecomposer(object):
             n_lambda = flag_wl.shape[0]
             n_lambda_flagged = flag_wl.sum(axis=0)
             flag = n_lambda_flagged > (flag_ratio_threshold * n_lambda)
-            f = self.flux[l1:l2] / self.flux_unit
-            noise = self.error[l1:l2] / self.flux_unit
+            f = self.flux[l1:l2]
+            noise = self.error[l1:l2]
             f[flag_wl] = np.ma.masked
             noise[flag_wl] = np.ma.masked
             w = noise**-2
