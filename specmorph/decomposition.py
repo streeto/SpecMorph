@@ -80,9 +80,10 @@ class IFSDecomposer(object):
             f = (f * w).sum(axis=0) / w_norm
             sigma2 = w_norm**-1
             if self.wlFWHM is not None:
+                # FIXME: This is probably a wrong way to compute the covariance.
                 nl = l2 - l1
                 dl = (self.wl[l2] - self.wl[l1]) / nl
-                theta = self.wl_FWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+                theta = self.wlFWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))
                 i = np.arange(nl)[:, np.newaxis]
                 j = i.T
                 A = dl / (np.sqrt(2.0 * np.pi) * theta)
@@ -90,7 +91,10 @@ class IFSDecomposer(object):
                 p = A * np.exp(B * (i - j)**2)
                 mask = np.identity(nl, 'bool')
                 p[mask] = 0.0
-                covariance = ((noise[np.newaxis,...] * noise) * p[:, :, np.newaxis, np.newaxis]).sum(axis=0).sum(axis=0)
+                noise_t = np.transpose(noise, (1, 2, 0))
+                tmp = np.dot(noise_t, p)
+                tmp *= noise_t
+                covariance = tmp.sum(axis=2)
                 sigma2 += covariance
             noise = np.sqrt(sigma2)
         # HACK: Valid flux and noise should not be zero, but some spectra forget about it.
