@@ -42,7 +42,7 @@ def load_sample(fname):
 def decomp(cube, sampleId, args):
     galaxyId = califa_id_from_cube(cube)
     logger.info('Starting fit for %s...' % galaxyId)
-    dec = CALIFADecomposer(cube, grating='none', nproc=args.nproc)
+    dec = CALIFADecomposer(cube, grating=args.grating, nproc=args.nproc)
     dec.setSynthPSF(FWHM=args.psfFWHM, beta=args.psfBeta, size=args.psfSize)
     
     logger.warn('Computing initial model using DE algorithm (takes a LOT of time).')
@@ -153,6 +153,8 @@ def parse_args():
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         help='Enable verbose output.')
     
+    parser.add_argument('--grating', dest='grating', type=str, default='none',
+                        help='Which grating was used (changes the error covariance). V500, V1200 or none.')
     parser.add_argument('--box-radius', dest='boxRadius', type=int, default=0,
                         help='Spectral running average box radius.')
     parser.add_argument('--box-step', dest='boxStep', type=int, default=1,
