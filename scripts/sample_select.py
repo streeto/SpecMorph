@@ -32,12 +32,12 @@ def get_ba(cubes):
 def parse_args():
     parser = argparse.ArgumentParser(description='Spectral Morphological Decomposition - sample select.')
     
+    parser.add_argument('cubes', type=str, nargs='+',
+                        help='CALIFA cubes. Ex.: K0001_synthesis_eBR_px1_q043.d14a512.ps03.k1.mE.CCM.Bgsd6e.fits')
     parser.add_argument('--sample-id', dest='sampleId', default='sample',
                         help='Sample name, will become the table file name.')
     parser.add_argument('--tables-dir', dest='tablesDir', default='data/tables',
                         help='Tables directory.')
-    parser.add_argument('--cubes-dir', dest='cubesDir', default='../cubes.px1/',
-                        help='PyCASSO cubes directory.')
     parser.add_argument('--ba-threshold', dest='baThreshold', type=float, default=0.7,
                     help='Minimum b/a in the sample.')
     parser.add_argument('--measure-ba', dest='measureBa', action='store_true',
@@ -54,8 +54,8 @@ args = parse_args()
 mc = load_morph_class(path.join(args.tablesDir, 'morph_eye_class.fits'))
 
 # Mark the available cubes as observed galaxies.
-obs_cubes = glob(path.join(args.cubesDir, '*_synthesis_eBR_px1_q043.d14a512.ps03.k1.mE.CCM.Bgsd6e.fits'))
-obs_califa_str = np.array([califa_id_from_cube(f) for f in obs_cubes])
+#obs_cubes = glob(path.join(args.cubesDir, '*_synthesis_eBR_px1_q043.d14a512.ps03.k1.mE.CCM.Bgsd6e.fits'))
+obs_califa_str = np.array([califa_id_from_cube(f) for f in args.cubes])
 obs_califa_id = np.array([califa_id_to_int(c_id) for c_id in obs_califa_str])
 # Make the CALIFA IDs into indices.
 obs_keys = obs_califa_id - 1
@@ -64,11 +64,11 @@ mc.add_column('observed', np.zeros(len(mc), dtype='int'))
 mc.observed[obs_keys] = 1
 
 mc.add_column('cube', np.zeros(len(mc), dtype='S128'))
-mc.cube[obs_keys] = obs_cubes
+mc.cube[obs_keys] = args.cubes
 
 if args.measureBa:
     mc.add_column('ba', np.ones(len(mc), dtype='bool') * -1.0)
-    mc.ba[obs_keys] = get_ba(obs_cubes)
+    mc.ba[obs_keys] = get_ba(args.cubes)
 
 ml = load_masterlist(path.join(args.tablesDir, 'califa_master_list_rgb.txt'))
 #############################################################################
