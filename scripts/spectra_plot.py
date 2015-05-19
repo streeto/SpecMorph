@@ -27,6 +27,20 @@ def getMinMax(image):
 
 
 ################################################################################
+def load_line_mask(line_file, wl):
+    import atpy
+    import pystarlight.io  # @UnusedImport
+    t = atpy.Table(line_file, type='starlight_mask')
+    masked_wl = np.zeros(wl.shape, dtype='bool')
+    for i in xrange(len(t)):
+        l_low, l_upp, line_w, _ = t[i]
+        if line_w > 0.0: continue
+        masked_wl |= (wl > l_low) & (wl < l_upp)
+    return masked_wl
+################################################################################
+
+
+################################################################################
 def plot_setup(plot_file):
     pdf = PdfPages(plot_file)
     plotpars = {'legend.fontsize': 8,
@@ -61,23 +75,23 @@ parser.add_argument('--db', dest='db', default='data/decomposition.005.h5',
 args = parser.parse_args()
 galaxyId = args.galaxyId[0]
 sampleId = path.basename(args.sample)
-# HACK: remove the dots in run name.
 
 c = DecompContainer()
 c.loadHDF5(args.db, sampleId, galaxyId)
 t = c.fitParams
 t_1p = c.firstPassParams
 l_obs_1p = t_1p['wl'][:]
-flag_bad_1p = t_1p['flag'] > 0.0
+flag_bad_1p = (t_1p['flag'] > 0.0) | (t_1p['chi2'] > 10.0)
 
 box_radius = c.attrs['box_radius']
 target_vd = c.attrs['target_vd']
 PSF_FWHM = c.attrs['PSF_FWHM']
 galaxyName = c.attrs['object_name']
 flux_unit = c.attrs['flux_unit']
-flag_bad = t['flag'] > 0.0
+flag_bad = (t['flag'] > 0.0) | (t['chi2'] > 2.0)
 flag_ok = ~flag_bad
 fit_l_obs = t['wl']
+masked_wl = load_line_mask('data/starlight/Mask.mE', fit_l_obs)
 
 initial_params = np.array(c.initialParams, dtype=t.dtype)
 initial_model = BDModel.fromParamVector(initial_params)
@@ -89,8 +103,6 @@ disk_model_im *= flux_unit
 l_range = np.where((fit_l_obs > 5590.0) & (fit_l_obs < 5680.0))[0]
 l1 = l_range[0]
 l2 = l_range[-1]
-l1 = 0
-l2 = -1
 x0 = t['x0'][0]
 y0 = t['y0'][0]
 
@@ -114,19 +126,26 @@ colnames = [
             'chi2',
             ]
 
+disk_colnames = [
+                 'I_0',
+                 'h',
+                 'PA_d',
+                 'ell_d',
+            ]
+
 limits = {'I_e': (-18, -16),
-          'r_e': (0, 20),
+          'r_e': (0, 35),
           'PA_b': (-5, 185),
           'ell_b': (-0.05, 1.0),
           'I_0': (-18, -16),
-          'h': (0, 20),
+          'h': (0, 35),
           'PA_d': (-5, 185),
           'ell_d': (-0.05, 1.05),
           'x0': None,
           'y0': None,
-          'chi2': None,
+          'chi2': (0,7),
           'n_pix': None,
-          'n': (0.95, 5.05),
+          'n': (0.95, 6.05),
           }
 
 ylabel = {'I_e': r'$\log I_e\ [erg / s /cm^2 / \AA]$',
@@ -171,26 +190,30 @@ pdf = plot_setup('plots/%s_%s.pdf' % (galaxyId, sampleId))
 ##########
 ################################################################################
 vmin, vmax = getMinMax(np.log10(total_im))
-fig = plt.figure(figsize=(8, 6))
+fig = plt.figure(1, figsize=(8, 6))
 gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
 ax = plt.subplot(gs[0,0])
-ax.imshow(np.log10(total_im), vmin=vmin, vmax=vmax)
+im = ax.imshow(np.log10(total_im), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Total')
+plt.colorbar(im, ax=ax)
+
 
 ax = plt.subplot(gs[0,1])
-ax.imshow(np.log10(bulge_model_im), vmin=vmin, vmax=vmax)
+im = ax.imshow(np.log10(bulge_model_im), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Bulge')
+plt.colorbar(im, ax=ax)
 
 ax = plt.subplot(gs[0,2])
-ax.imshow(np.log10(disk_model_im), vmin=vmin, vmax=vmax)
+im = ax.imshow(np.log10(disk_model_im), vmin=vmin, vmax=vmax)
 ax.set_xticks([])
 ax.set_yticks([])
 ax.set_title(r'Disk')
-
+plt.colorbar(im, ax=ax)
+    
 ax = plt.subplot(gs[1,:])
 bins = np.arange(0, 32)
 bins_c = bins[:-1] + 0.5
@@ -226,7 +249,7 @@ pdf.savefig()
 ########## All fit parameters 
 ##########
 ################################################################################
-fig = plt.figure(1, figsize=(8, 7))
+fig = plt.figure(2, figsize=(8, 7))
 n_rows = 4
 n_cols = 3
 gs = plt.GridSpec(n_rows, n_cols)
@@ -237,7 +260,7 @@ for i, colname in enumerate(colnames):
     l = np.ma.array(fit_l_obs, mask=flag_bad)
     y_1p = np.ma.array(func[colname](t_1p[colname]), mask=flag_bad_1p)
     l_1p = np.ma.array(l_obs_1p, mask=flag_bad_1p)
-    ax.plot(l_1p, y_1p, '.r')
+    ax.plot(l_1p, y_1p, '.b')
     ax.plot(l, y, 'k')
     ax.set_ylabel(ylabel[colname])
     ax.xaxis.set_major_locator(MultipleLocator(1000))
@@ -249,9 +272,10 @@ for i, colname in enumerate(colnames):
         ymin = limits[colname][0]
         ymax = limits[colname][1]
     else:
-        ymin = y.min()
-        ymax = y.max()
-    ax.vlines(fit_l_obs[flag_bad], ymin, ymax, 'gray', alpha=0.5)
+        ymin = min(y.min(), y_1p.min())
+        ymax = max(y.max(), y_1p.max())
+    colors = np.where(masked_wl[flag_bad], 'gray', 'pink')
+    ax.vlines(fit_l_obs[flag_bad], ymin, ymax, colors, alpha=0.25)
     ax.set_ylim(ymin, ymax)
     ax.set_xlim(fit_l_obs.min(), fit_l_obs.max())
 plt.suptitle('%s - %s' % (galaxyName, galaxyId))
@@ -264,7 +288,7 @@ pdf.savefig(fig)
 ########## Model images
 ##########
 ################################################################################
-fig = plt.figure(2, figsize=(8, 6))
+fig = plt.figure(3, figsize=(8, 6))
 gs = plt.GridSpec(3, 2, height_ratios=[-0.2, 1.0, 1.0])
 
 
@@ -311,7 +335,7 @@ pdf.savefig(fig)
 ########## Fit quality
 ##########
 ################################################################################
-fig = plt.figure(3, figsize=(8, 10))
+fig = plt.figure(4, figsize=(8, 10))
 gs = plt.GridSpec(2, 1, height_ratios=[1.0, 1.0])
 ax = plt.subplot(gs[0])
 
@@ -365,7 +389,7 @@ pdf.savefig(fig)
 ########## Radial profiles
 ##########
 ################################################################################
-fig = plt.figure(4, figsize=(8, 10))
+fig = plt.figure(5, figsize=(8, 10))
 N_cols = 5
 N_rows = 6
 N_cell = N_cols * N_rows
