@@ -13,13 +13,13 @@ import numpy as np
 from os import path
 import argparse
 import time
-import atpy
 
 
 ################################################################################
 def load_line_mask(line_file, wl):
+    import atpy
     import pystarlight.io  # @UnusedImport
-    t = atpy.Table(args.maskFile, type='starlight_mask')
+    t = atpy.Table(line_file, type='starlight_mask')
     masked_wl = np.zeros(wl.shape, dtype='bool')
     for i in xrange(len(t)):
         l_low, l_upp, line_w, line_name = t[i]
@@ -32,6 +32,7 @@ def load_line_mask(line_file, wl):
 
 ################################################################################
 def load_sample(fname):
+    import atpy
     from asciitable import CommentedHeaderReader
     return atpy.Table(fname, type='ascii', Reader=CommentedHeaderReader)
 ################################################################################
@@ -56,6 +57,7 @@ def decomp(cube, sampleId, args):
     l2 = dec.Nl_obs
     cache_file = cube + '.initmodel'
     if not path.exists(cache_file):
+        logger.info('Creating gray image for initial model.')
         gray_image, gray_noise, _ = dec.getSpectraSlice(l1, l2, masked_wl)
     else:
         gray_image = None
