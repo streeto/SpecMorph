@@ -318,7 +318,7 @@ class BDModel(SimpleModelDescription):
         return np.dtype([('wl', 'float64'), ('x0', 'float64'), ('y0', 'float64'),
                          ('I_e', 'float64'), ('r_e', 'float64'), ('n', 'float64'), ('PA_b', 'float64'), ('ell_b', 'float64'),
                          ('I_0', 'float64'), ('h', 'float64'), ('PA_d', 'float64'), ('ell_d', 'float64'),
-                         ('flag', 'float64'), ('chi2', 'float64'), ('n_pix', 'float64'), ])
+                         ('flag', 'bool'), ('chi2', 'float64'), ('n_pix', 'float64'), ])
 
 
     def getParams(self):
