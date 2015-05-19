@@ -38,7 +38,7 @@ class CALIFADecomposer(IFSDecomposer):
         logger.debug('Computing IFS from voronoi zone spectra...')
         flux = self.K.zoneToYX(flux, extensive=True, surface_density=False)
         error = self.K.zoneToYX(error, extensive=True, surface_density=False)
-        flags = self.K.zoneToYX(flags, extensive=False)
+        flags = self.K.zoneToYX(flags, extensive=False).filled(True)
         self.loadData(self.K.l_obs, flux, error, flags, wl_FWHM)
 
 
@@ -46,6 +46,9 @@ class CALIFADecomposer(IFSDecomposer):
         flux = self.K.f_obs / self.flux_unit
         error = self.K.f_err / self.flux_unit
         flags = self.K.f_flag > 0.0
+        flags |= flux <= 0.0
+        flags |= error <= 0.0
+        error[error <= 0.0] = error.max()
         if target_vd is None:
             target_vd = np.percentile(self.K.v_d, self.vdPercentile)
         self.targetVd = target_vd
@@ -56,6 +59,13 @@ class CALIFADecomposer(IFSDecomposer):
         flux, error, flags = fix_kinematics(self.K.l_obs, flux, error,
                                             flags, self.K.v_0, self.K.v_d, target_vd,
                                             nproc, wl_FWHM)
+        assert np.isfinite(flux[~flags]).all()
+        assert np.isfinite(error[~flags]).all()
+        assert np.isfinite(flags).all()
+
+        assert (flux[~flags] > 0.0).all()
+        assert (error[~flags] > 0.0).all()
+        
         return flux, error, flags, dl
     
 
