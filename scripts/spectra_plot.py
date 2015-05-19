@@ -94,9 +94,9 @@ l2 = -1
 x0 = t['x0'][0]
 y0 = t['y0'][0]
 
-bulge_im = np.median(c.bulge.f_obs[l1:l2], axis=0)
-disk_im = np.median(c.disk.f_obs[l1:l2], axis=0)
-total_im = np.median(c.total.f_obs[l1:l2], axis=0)
+bulge_im = np.median(c.bulge.f_obs[l1:l2], axis=0) * flux_unit
+disk_im = np.median(c.disk.f_obs[l1:l2], axis=0) * flux_unit
+total_im = np.median(c.total.f_obs[l1:l2], axis=0) * flux_unit
 residual_im = (total_im - disk_im - bulge_im)  / total_im
 
 colnames = [
@@ -318,9 +318,9 @@ ax = plt.subplot(gs[0])
 xx = np.round(initial_model.x0.value)
 yy = np.round(initial_model.y0.value)
 
-f_total = c.total.f_obs[:,yy,xx]
-f_disk = c.disk.f_obs[:,yy,xx]
-f_bulge = c.bulge.f_obs[:,yy,xx]
+f_total = c.total.f_obs[:,yy,xx] * flux_unit
+f_disk = c.disk.f_obs[:,yy,xx] * flux_unit
+f_bulge = c.bulge.f_obs[:,yy,xx] * flux_unit
 f_res = f_total - f_disk - f_bulge
 vmax = 1.05 * max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
 vmin = -2.0 * f_res.std()
@@ -339,9 +339,9 @@ ax.legend()
 
 ax = plt.subplot(gs[1])
 xx = np.ceil(initial_model.x0.value + initial_model.bulge.r_e.value)
-f_total = c.total.f_obs[:,yy,xx]
-f_disk = c.disk.f_obs[:,yy,xx]
-f_bulge = c.bulge.f_obs[:,yy,xx]
+f_total = c.total.f_obs[:,yy,xx] * flux_unit
+f_disk = c.disk.f_obs[:,yy,xx] * flux_unit
+f_bulge = c.bulge.f_obs[:,yy,xx] * flux_unit
 f_res = f_total - f_disk - f_bulge
 vmax = 1.05 * max(f_total.max(), f_disk.max(), f_bulge.max(), f_res.max())
 vmin = -2.0 * f_res.std()
@@ -395,9 +395,9 @@ for i in xrange(N_cols):
         wl = fit_l_obs[l]
         x0 = t['x0'][l]
         y0 = t['y0'][l]
-        bulge_im = c.bulge.f_obs[l]
-        disk_im = c.disk.f_obs[l]
-        total_im = c.total.f_obs[l]
+        bulge_im = c.bulge.f_obs[l] * flux_unit
+        disk_im = c.disk.f_obs[l] * flux_unit
+        total_im = c.total.f_obs[l] * flux_unit
         mask = ~np.isnan(total_im)
         pa, ba = getEllipseParams(total_im, x0, y0, mask=mask)
         bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)

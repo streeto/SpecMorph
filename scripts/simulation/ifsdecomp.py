@@ -330,11 +330,11 @@ colnames = [
             'chi2',
             ]
 
-limits = {'I_e': (-17, -15),
+limits = {'I_e': (-1, 1),
           'r_e': (0, 20),
           'PA_b': (0, 180),
           'ell_b': (0.5, 1.0),
-          'I_0': (-17, -15),
+          'I_0': (-1, 1),
           'h': (0, 20),
           'PA_d': (0, 180),
           'ell_d': (0.5, 1.0),
@@ -363,7 +363,7 @@ ylabel = {'I_e': r'$\log I_e\ [erg / s /cm^2 / \AA]$',
 nothing = lambda x: x
 rad_to_degrees = lambda x: x * 180.0 / np.pi
 ell_to_ba = lambda x: 1 - x
-log10flux = lambda x: np.log10(x*flux_unit)
+log10flux = lambda x: np.log10(x)
 func = {'I_e': log10flux,
         'r_e': nothing,
         'PA_b': nothing,
@@ -431,7 +431,7 @@ bulge_im = np.median(fitted_bulge_ifs[l1:l2], axis=0)
 
 disk_im = np.median(fitted_disk_ifs[l1:l2], axis=0)
 
-total_im = np.median(decomp.flux[l1:l2], axis=0)
+total_im = np.median(decomp.flux[l1:l2] * flux_unit, axis=0)
 
 residual_im = (total_im - disk_im - bulge_im)  / total_im
 
@@ -482,14 +482,13 @@ pdf.savefig(fig)
 ########## Fit quality
 ##########
 ################################################################################
-
 fig = plt.figure(figsize=(8, 10))
 gs = plt.GridSpec(3, 2, height_ratios=[1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[0, :])
 xx = np.round(initial_model.x0.value)
 yy = np.round(initial_model.y0.value)
-f_total = decomp.flux[:,yy,xx]
+f_total = decomp.flux[:,yy,xx] * flux_unit
 f_disk = fitted_disk_ifs[:,yy,xx]
 f_disk_orig = disk_ifs[:,yy,xx]
 f_bulge = fitted_bulge_ifs[:,yy,xx]
@@ -512,7 +511,7 @@ ax.legend()
 
 ax = plt.subplot(gs[1, :])
 xx = np.ceil(initial_model.x0.value + initial_model.bulge.r_e.value)
-f_total = decomp.flux[:,yy,xx]
+f_total = decomp.flux[:,yy,xx] * flux_unit
 f_disk = fitted_disk_ifs[:,yy,xx]
 f_disk_orig = disk_ifs[:,yy,xx]
 f_bulge = fitted_bulge_ifs[:,yy,xx]
@@ -614,7 +613,7 @@ for i in xrange(N_cols):
         y0 = fitted_params['y0'][l]
         bulge_im = fitted_bulge_ifs[l]
         disk_im = fitted_disk_ifs[l]
-        total_im = decomp.flux[l]
+        total_im = decomp.flux[l] * flux_unit
         mask = ~np.isnan(total_im)
         pa, ell = ellipse_params(total_im, x0, y0)
         pa = (90.0 + pa) * np.pi / 180.0

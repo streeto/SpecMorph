@@ -29,6 +29,7 @@ class CALIFADecomposer(IFSDecomposer):
         elif grating == 'none':
             disp_FWHM = None
         self.K = fitsQ3DataCube(db, smooth=True)
+        self.flux_unit = self.K.keywords['FLUX_UNIT']
         flux, error, flags, vel_FWHM = self._fixKinematics(target_vd, disp_FWHM, nproc)
         if disp_FWHM is not None:
             wl_FWHM = np.sqrt(vel_FWHM**2 + disp_FWHM**2)
@@ -42,6 +43,8 @@ class CALIFADecomposer(IFSDecomposer):
 
 
     def _fixKinematics(self, target_vd, wl_FWHM=None, nproc=None):
+        flux = self.K.f_obs / self.flux_unit
+        error = self.K.f_err / self.flux_unit
         flags = self.K.f_flag > 0.0
         if target_vd is None:
             target_vd = np.percentile(self.K.v_d, self.vdPercentile)
@@ -50,8 +53,7 @@ class CALIFADecomposer(IFSDecomposer):
         lambda_zero = 5500.0
         dl = lambda_zero * target_vd / c
         logger.debug('Fixing kinematics: v_d = %.1f km/s (%.1f \\AA @ 5500 \\AA) ...' % (target_vd, dl))
-        flux, error, flags = fix_kinematics(self.K.l_obs, self.K.f_obs / self.flux_unit,
-                                            self.K.f_err / self.flux_unit,
+        flux, error, flags = fix_kinematics(self.K.l_obs, flux, error,
                                             flags, self.K.v_0, self.K.v_d, target_vd,
                                             nproc, wl_FWHM)
         return flux, error, flags, dl

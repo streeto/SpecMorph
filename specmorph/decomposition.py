@@ -17,13 +17,11 @@ __all__ = ['IFSDecomposer']
 
 ################################################################################
 class IFSDecomposer(object):
-    minNPix = 1000
-    flux_unit = 1e-16
+    minNPix = 2000
 
     
     def __init__(self):
         self._PSF = None
-        pass
 
 
     def loadData(self, wl, flux, error, flags, wl_FWHM=None):
@@ -172,7 +170,7 @@ class IFSDecomposer(object):
         disk = np.empty((len(models), self.N_y, self.N_x))
         shape = (self.N_y, self.N_x)
         for i, model in enumerate(models):
-            bulge[i] = model_image(model.getBulge(), shape, PSF, nproc) * self.flux_unit
-            disk[i] = model_image(model.getDisk(), shape, PSF, nproc) * self.flux_unit
+            bulge[i] = model_image(model.getBulge(), shape, PSF, nproc)
+            disk[i] = model_image(model.getDisk(), shape, PSF, nproc)
         return bulge, disk
 ################################################################################
