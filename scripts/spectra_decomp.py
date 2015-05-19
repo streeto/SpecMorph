@@ -67,7 +67,7 @@ def decomp(cube, sampleId, args):
     
     t1 = time.time()
     c = DecompContainer()
-    c.zones = dec.K.qZones
+    c.zones = np.ma.array(dec.K.qZones, mask=dec.K.qZones < 0)
     c.initialParams = initial_model.getParams()
     c.attrs = dict(PSF_FWHM=args.psfFWHM,
                    PSF_beta=args.psfBeta,

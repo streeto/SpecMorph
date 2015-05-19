@@ -35,6 +35,14 @@ class IFSContainer(object):
         self.i_f_flag = self.i_f_flag > 0.0
     
 
+    def asZones(self, zone_map):
+        ix = np.argsort(zone_map.compressed())
+        f_obs = self.f_obs[:, self.mask][:, ix]
+        f_err = self.f_err[:, self.mask][:, ix]
+        f_flag = self.f_flag[:, self.mask][:, ix]
+        return f_obs, f_err, f_flag
+    
+
     def getQbickPlanes(self):
         wl_mask = np.where((self.wl > 5590.0) & (self.wl < 5680.0))[0]
         f_obs = np.ma.masked_invalid(self.f_obs[wl_mask], copy=True)
@@ -188,7 +196,10 @@ class DecompContainer(object):
             
             self.fitParams = grp.fit_parameters.read()
             self.firstPassParams = grp.first_pass_parameters.read()
-            self.zones = grp.zones[...]
+            
+            zones = grp.zones[...]
+            self.zones = np.ma.array(zones, mask=zones < 0)
+            
             self.total.loadHDF5(db, grp, 'total')
             self.bulge.loadHDF5(db, grp, 'bulge')
             self.disk.loadHDF5(db, grp, 'disk')
