@@ -395,8 +395,8 @@ for i, colname in enumerate(colnames):
     y = func[colname](fitted_params[colname])
     y_1p = func[colname](first_pass_params[colname])
     ax.plot(decomp.wl, y_orig, ':k')
-    ax.plot(first_pass_lambdas, y_1p, '.r')
     ax.plot(decomp.wl, y, 'k')
+    ax.plot(first_pass_lambdas, y_1p, '.r')
     ax.set_ylabel(ylabel[colname])
     ax.xaxis.set_major_locator(MultipleLocator(1000))
     if (i / n_cols) == (n_rows - 1):
@@ -531,28 +531,7 @@ ax.set_xlabel(r'wavelength $[\AA]$')
 ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
 ax.set_title(r'Spectra at $R = r_e$ ($%.1f\,arcsec$)' % initial_model.bulge.r_e.value)
 
-ax = plt.subplot(gs[2, 0])
-pa = (90.0 + initial_model.bulge.PA.value) * np.pi / 180.0
-ba = 1.0 - initial_model.bulge.ell.value
-bulge_bins = np.arange(0.0, initial_model.bulge.r_e.value * 2.5 + 1.0)
-bulge_error = fitted_bulge_ifs / bulge_ifs
-bulge_error_mean = np.mean(bulge_error)
-bulge_error_std = np.std(bulge_error)
-print 'bulge error: %.4f +- %.4f' % (bulge_error_mean, bulge_error_std)
-bulge_error_r = radialProfile(bulge_error, bulge_bins, norm_x0, norm_y0, pa, ba, rad_scale=1.0)
-bulge_error_min, bulge_error_max = np.percentile(bulge_error_r, (5, 95))
-bulge_error_mean = np.mean(bulge_error_r)
-bulge_error_std = np.std(bulge_error_r)
-im = ax.pcolormesh(bulge_bins, wl, bulge_error_r, vmin=bulge_error_min, vmax=bulge_error_max)
-ax.text(0.1, 0.9, r'$%.4f\ \pm\ %.4f$' % (bulge_error_mean, bulge_error_std), transform=ax.transAxes)
-ax.set_xlim(0, bulge_bins.max())
-ax.set_ylim(wl.min(), wl.max())
-ax.set_xlabel(r'radius $[arcsec]$')
-ax.set_ylabel(r'wavelength $[\AA]$')
-ax.set_title(r'Fitted / original ratio for bulge')
-plt.colorbar(im, ax=ax)
 
-ax = plt.subplot(gs[2, 1])
 pa = (90.0 + initial_model.disk.PA.value) * np.pi / 180.0
 ba = 1.0 - initial_model.disk.ell.value
 disk_error = fitted_disk_ifs / disk_ifs
@@ -563,8 +542,38 @@ disk_error_r = radialProfile(disk_error, bins, norm_x0, norm_y0, pa, ba, rad_sca
 disk_error_min, disk_error_max = np.percentile(disk_error_r, (5, 95))
 disk_error_mean = np.mean(disk_error_r)
 disk_error_std = np.std(disk_error_r)
-im = ax.pcolormesh(bins, wl, disk_error_r, vmin=disk_error_min, vmax=disk_error_max)
-ax.text(0.1, 0.9, r'$%.4f\ \pm\ %.4f$' % (disk_error_mean, disk_error_std), transform=ax.transAxes)
+
+pa = (90.0 + initial_model.bulge.PA.value) * np.pi / 180.0
+ba = 1.0 - initial_model.bulge.ell.value
+bulge_bins = np.arange(0.0, initial_model.bulge.r_e.value * 2.5 + 1.0)
+bulge_error = fitted_bulge_ifs / bulge_ifs
+good_bulge = distance(total_im.shape, norm_x0, norm_y0, pa, ba) < (initial_model.bulge.r_e.value * 2.5)
+print bulge_error.shape
+bulge_error_mean = np.mean(bulge_error[:, good_bulge])
+bulge_error_std = np.std(bulge_error[:, good_bulge])
+print 'bulge error: %.4f +- %.4f' % (bulge_error_mean, bulge_error_std)
+bulge_error_r = radialProfile(bulge_error, bulge_bins, norm_x0, norm_y0, pa, ba, rad_scale=1.0)
+bulge_error_min, bulge_error_max = np.percentile(bulge_error_r, (5, 95))
+bulge_error_mean = np.mean(bulge_error_r)
+bulge_error_std = np.std(bulge_error_r)
+
+error_range = np.abs(1.0 - np.array([bulge_error_min, bulge_error_max, disk_error_min, disk_error_max])).max()
+vmin = 1.0 - error_range
+vmax = 1.0 + error_range
+
+ax = plt.subplot(gs[2, 0])
+im = ax.pcolormesh(bulge_bins, wl, bulge_error_r, vmin=vmin, vmax=vmax, cmap='RdBu')
+#ax.text(0.1, 0.9, r'$%.4f\ \pm\ %.4f$' % (bulge_error_mean, bulge_error_std), transform=ax.transAxes)
+ax.set_xlim(0, bulge_bins.max())
+ax.set_ylim(wl.min(), wl.max())
+ax.set_xlabel(r'radius $[arcsec]$')
+ax.set_ylabel(r'wavelength $[\AA]$')
+ax.set_title(r'Fitted / original ratio for bulge')
+plt.colorbar(im, ax=ax)
+
+ax = plt.subplot(gs[2, 1])
+im = ax.pcolormesh(bins, wl, disk_error_r, vmin=vmin, vmax=vmax, cmap='RdBu')
+#ax.text(0.1, 0.9, r'$%.4f\ \pm\ %.4f$' % (disk_error_mean, disk_error_std), transform=ax.transAxes)
 ax.set_xlim(0, bins.max())
 ax.set_ylim(wl.min(), wl.max())
 ax.set_xlabel(r'radius $[arcsec]$')
@@ -618,7 +627,6 @@ for i in xrange(N_cols):
         pa, ell = ellipse_params(total_im, x0, y0)
         pa = (90.0 + pa) * np.pi / 180.0
         ba = 1.0 - ell
-        r__yx = distance(total_im.shape, x0, y0, pa, ba)
         bulge_r = radialProfile(bulge_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
         disk_r = radialProfile(disk_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
         total_r = radialProfile(total_im, bin_r, x0, y0, pa, ba, rad_scale=1.0)
