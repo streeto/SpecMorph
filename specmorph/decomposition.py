@@ -11,6 +11,7 @@ from imfit import moffat_psf, gaussian_psf
 import collections
 import numpy as np
 from copy import deepcopy
+from specmorph.util import gaussian_covariance
 
 __all__ = ['IFSDecomposer']
 
@@ -18,6 +19,7 @@ __all__ = ['IFSDecomposer']
 ################################################################################
 class IFSDecomposer(object):
     minNPix = 2000
+    useEstimatedVariance = False
 
     
     def __init__(self):
@@ -58,10 +60,9 @@ class IFSDecomposer(object):
             masked_wl = np.zeros(self.wl.shape, dtype='bool')
         if (l1 == l2) or (l2 is None):
             wl = self.wl[l1]
-            flag = self.flags[l1].copy()
-            flag[masked_wl[l1]] = True
-            f = self.flux[l1]
-            noise = self.error[l1]
+            flag = self.flags[l1] | masked_wl[l1]
+            f_mean = self.flux[l1].copy()
+            n_mean = self.error[l1].copy()
         else:
             wl = np.mean(self.wl[l1:l2])
             flag_wl = self.flags[l1:l2].copy()
@@ -69,39 +70,35 @@ class IFSDecomposer(object):
             n_lambda = flag_wl.shape[0]
             n_lambda_flagged = flag_wl.sum(axis=0)
             flag = n_lambda_flagged > (flag_ratio_threshold * n_lambda)
-            f = self.flux[l1:l2]
-            noise = self.error[l1:l2]
+            f = self.flux[l1:l2].copy()
+            n = self.error[l1:l2].copy()
             f[flag_wl] = np.ma.masked
-            noise[flag_wl] = np.ma.masked
-            w = noise**-2
+            n[flag_wl] = np.ma.masked
+            w = n**-2
             w_norm = w.sum(axis=0)
-            f = (f * w).sum(axis=0) / w_norm
-            sigma2 = w_norm**-1
-            if self.wlFWHM is not None:
-                # FIXME: This is probably a wrong way to compute the covariance.
-                nl = l2 - l1
-                dl = (self.wl[l2] - self.wl[l1]) / nl
-                theta = self.wlFWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))
-                i = np.arange(nl)[:, np.newaxis]
-                j = i.T
-                A = dl / (np.sqrt(2.0 * np.pi) * theta)
-                B = -0.5 * (dl / theta)**2
-                p = A * np.exp(B * (i - j)**2)
-                mask = np.identity(nl, 'bool')
-                p[mask] = 0.0
-                noise_t = np.transpose(noise, (1, 2, 0))
-                tmp = np.dot(noise_t, p)
-                tmp *= noise_t
-                covariance = tmp.sum(axis=2)
-                sigma2 += covariance
-            noise = np.sqrt(sigma2)
-        # HACK: Valid flux and noise should not be zero, but some spectra forget about it.
-        flag |= (noise <= 0.0)
-        flag |= (f <= 0.0)
-        f[flag] = np.ma.masked
-        noise[flag] = np.ma.masked
+            f_mean = (f * w).sum(axis=0) / w_norm
+            if self.useEstimatedVariance:
+                w2_norm = (w * w).sum(axis=0)
+                sigma2 = w_norm / (w_norm**2 - w2_norm) * (w * (f - f_mean)**2).sum(axis=0)
+            else:
+                sigma2 = w_norm**-1
+                if self.wlFWHM is not None:
+                    a = gaussian_covariance(n, self.wl[l1:l2], self.wlFWHM)
+                    print a.compressed()
+                    print sigma2.compressed()
+                    sigma2 += a
+            n_mean = np.sqrt(sigma2)
 
-        return f, noise, wl
+        f_mean[flag] = np.ma.masked
+        n_mean[flag] = np.ma.masked
+
+        validpix = (~flag).sum()
+        assert validpix == 0 or np.isfinite(f_mean).all()
+        assert validpix == 0 or np.isfinite(n_mean).all()
+        assert validpix == 0 or (f_mean > 0.0).all()
+        assert validpix == 0 or (n_mean > 0.0).all()
+        
+        return f_mean, n_mean, wl
 
 
     def _specSlicer(self, step, box_radius, masked_wl):
