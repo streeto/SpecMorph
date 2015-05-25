@@ -41,6 +41,17 @@ def load_sample(fname):
 ################################################################################
 def decomp(cube, sampleId, args):
     galaxyId = califa_id_from_cube(cube)
+    c = DecompContainer()
+    if not args.overwrite:
+        logger.info('Checking if the decomposition is already done for %s ...' % galaxyId)
+        try:
+            c.loadHDF5(args.db, sampleId, galaxyId)
+            logger.warn('Previous data found, skipping decomposition.')
+            return c
+        except Exception as e:
+            print e
+            logger.info('No previous data found, continuing decomposition.')
+            
     logger.info('Starting fit for %s...' % galaxyId)
     dec = CALIFADecomposer(cube, grating=args.grating, nproc=args.nproc)
     dec.useEstimatedVariance = args.estVar
@@ -69,7 +80,6 @@ def decomp(cube, sampleId, args):
     logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
     
     t1 = time.time()
-    c = DecompContainer()
     c.zones = np.ma.array(dec.K.qZones, mask=dec.K.qZones < 0)
     c.initialParams = initial_model.getParams()
     c.attrs = dict(PSF_FWHM=args.psfFWHM,
@@ -191,7 +201,9 @@ if __name__ =='__main__':
 
     for gal in sample:
         cube = gal['cube']
-        c = decomp(cube, sampleId, args)
-
-
-
+        try:
+            c = decomp(cube, sampleId, args)
+        except Exception as e:
+            logger.error('Error decomposing cube %s' % cube)
+            logger.error('Exception: %s.' % str(e))
+            logger.warn('Skipping to next galaxy.')

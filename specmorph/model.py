@@ -172,6 +172,8 @@ def disk_function(I_0=0.0, h=0.0, PA=0.0, ell=0.0):
 ################################################################################
 def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
     flag_ok = (flags == 0) & (wl > 4500.0)
+    if flag_ok.sum() <= degree + 1:
+        raise Exception('Too many flagged points.') 
     from astropy.modeling import models, fitting
     if degree == 0:
         line = models.Polynomial1D(degree=1)

@@ -28,6 +28,8 @@ class CALIFADecomposer(IFSDecomposer):
             disp_FWHM = self.dispFWHM_V1200
         elif grating == 'none':
             disp_FWHM = None
+        else:
+            raise Exception('Unknown grating type %s' % grating)
         self.K = fitsQ3DataCube(db, smooth=True)
         self.flux_unit = self.K.keywords['FLUX_UNIT']
         flux, error, flags, vel_FWHM = self._fixKinematics(target_vd, disp_FWHM, nproc)
