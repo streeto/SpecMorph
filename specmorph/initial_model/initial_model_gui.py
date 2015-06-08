@@ -6,7 +6,8 @@ Created on 02/06/2015
 
 from specmorph.model import create_model_images, BDModel
 from specmorph.util import logger
-from specmorph.geometry import ellipse_params
+from specmorph.geometry import ellipse_params, distance, r50
+from specmorph.fitting import fit_image
 
 import wx
 from wx.lib.newevent import NewEvent
@@ -16,10 +17,10 @@ matplotlib.use('WXAgg')
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.backends.backend_wx import NavigationToolbar2Wx as Toolbar
 from matplotlib.figure import Figure
-from matplotlib.ticker import MaxNLocator
 from matplotlib.gridspec import GridSpec
 import numpy as np
-from copy import copy, deepcopy
+from copy import deepcopy
+from os import path
 
 __all__ = ['InitialModelFrame']
 
@@ -27,6 +28,7 @@ __all__ = ['InitialModelFrame']
 ################################################################################
 ParamUpdateEvent, EVT_PARAM_UPDATE_EVENT = NewEvent()
 ModelUpdateEvent, EVT_MODEL_UPDATE_EVENT = NewEvent()
+FitEvent, EVT_FIT_EVENT = NewEvent()
 ################################################################################
 
 
@@ -60,11 +62,10 @@ class PlotPanel(wx.Panel):
                 }
         matplotlib.rcParams.update(plotpars)
 
-    def createImageAxes(self, data, subplot, nticks=5, vmin=None, vmax=None):
+    def createImageAxes(self, data, subplot, nticks=5, vmin=None, vmax=None, cmap=None):
         axes = self.figure.add_subplot(subplot)
-        image = axes.imshow(data, vmin=vmin, vmax=vmax)
-        cbar = self.figure.colorbar(image, ax=axes)
-        cbar.ax.yaxis.set_major_locator(MaxNLocator(nticks))
+        image = axes.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap)
+        self.figure.colorbar(image, ax=axes)
         axes.set_xticks([])
         axes.set_yticks([])
         return axes, image
@@ -77,10 +78,13 @@ class PlotPanel(wx.Panel):
 
         vmin = np.nanmin(obs_im)
         vmax = np.nanmax(obs_im)
+        res_amp = np.abs(res_im).max()
 
         self.obsAxes, self.obsImage = self.createImageAxes(obs_im, gs[0,0], vmin=vmin, vmax=vmax)
         self.modAxes, self.modImage = self.createImageAxes(mod_im, gs[0,1], vmin=vmin, vmax=vmax)
-        self.resAxes, self.resImage = self.createImageAxes(res_im, gs[0,2])
+
+        self.resAxes, self.resImage = self.createImageAxes(res_im, gs[0,2],
+                                                           vmin=-res_amp, vmax=res_amp, cmap='RdBu')
         
         self.obsAxes.set_title('observed')
         self.modAxes.set_title('model')
@@ -219,6 +223,7 @@ class ParamCtrl(wx.Panel):
         self.llimitText.SetBackgroundColour(None)
         self.ulimitText.SetBackgroundColour(None)
         self.setSlider(self.value)
+        self.sendChangeEvent()
 
 
     def onSlide(self, event):
@@ -253,6 +258,7 @@ class ControlPanel(wx.Panel):
         self.model = deepcopy(self.originalModel)
 
         self.resetButton = wx.Button(self, wx.ID_ANY, 'Reset', (-1, -1), wx.DefaultSize)
+        self.fitButton = wx.Button(self, wx.ID_ANY, 'Fit', (-1, -1), wx.DefaultSize)
         self.saveButton = wx.Button(self, wx.ID_ANY, 'Save', (-1, -1), wx.DefaultSize)
 
         self.params = {}
@@ -266,6 +272,7 @@ class ControlPanel(wx.Panel):
         self.h = self.addParamCtrl(self.model.disk.h)
         
         self.resetButton.Bind(wx.EVT_BUTTON, self.onResetButton)
+        self.fitButton.Bind(wx.EVT_BUTTON, self.onFitButton)
         self.saveButton.Bind(wx.EVT_BUTTON, self.onSaveButton)
 
         sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -279,9 +286,13 @@ class ControlPanel(wx.Panel):
         sizer_r.Add(self.Y0, 1, wx.EXPAND | wx.ALL, 5)
         sizer_r.Add(self.I_0, 1, wx.EXPAND | wx.ALL, 5)
         sizer_r.Add(self.h, 1, wx.EXPAND | wx.ALL, 5)
-        sizer_r.Add(self.saveButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
-        sizer_r.Add(self.resetButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        button_sizer.Add(self.resetButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        button_sizer.Add(self.fitButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
 
+        sizer_r.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer_r.Add(self.saveButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         sizer.Add(sizer_l, 1, wx.EXPAND | wx.ALL, 5)
         sizer.Add(sizer_r, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -300,8 +311,8 @@ class ControlPanel(wx.Panel):
         self.params[param.name] = param
 
 
-    def sendModelUpdateEvent(self):
-        event = ModelUpdateEvent(model=self.model)
+    def sendModelUpdateEvent(self, reset=False):
+        event = ModelUpdateEvent(model=self.model, reset=reset)
         wx.PostEvent(self.GetEventHandler(), event)
     
 
@@ -316,7 +327,11 @@ class ControlPanel(wx.Panel):
 
 
     def onResetButton(self, event):
-        self.model = deepcopy(self.originalModel)
+        self.resetParams(self.originalModel, reset_plot=True)
+        
+        
+    def resetParams(self, model, reset_plot=False):
+        self.model = deepcopy(model)
         self.params = {}
         
         self.initParamCtrl(self.X0, self.model.x0)
@@ -328,9 +343,15 @@ class ControlPanel(wx.Panel):
 
         self.initParamCtrl(self.I_0, self.model.disk.I_0)
         self.initParamCtrl(self.h, self.model.disk.h)
-        self.sendModelUpdateEvent()
+        self.sendModelUpdateEvent(reset=reset_plot)
 
         
+    def onFitButton(self, event):
+        self.Disable()
+        event = FitEvent(model=self.model)
+        wx.PostEvent(self.GetEventHandler(), event)
+    
+    
     def onParamUpdate(self, event):
         param = self.params[event.param]
         param.setValue(event.value)
@@ -350,13 +371,13 @@ class InitialModelFrame(wx.Frame):
         
         self.plotTitle = plot_title
         
-        self.modelFile = model_file
-        self.loadModel()
+        model = self.loadModel(model_file)
         
         self.plotPanel = PlotPanel(self)
-        self.controlPanel = ControlPanel(self, wx.ID_ANY, self.model, self.modelFile)
+        self.controlPanel = ControlPanel(self, wx.ID_ANY, model, model_file)
 
         self.controlPanel.Bind(EVT_MODEL_UPDATE_EVENT, self.onModelUpdate)
+        self.controlPanel.Bind(EVT_FIT_EVENT, self.onFit)
 
         frameSizer = wx.BoxSizer(wx.VERTICAL)
         frameSizer.Add(self.plotPanel, 1, wx.EXPAND)
@@ -364,10 +385,32 @@ class InitialModelFrame(wx.Frame):
         self.SetSizerAndFit(frameSizer)
 
         self.SetAutoLayout(True)
+        self.createMenu()
         
-        self.updatePlots(self.initialModel, reset=True)    
+        self.updatePlots(model, reset=True)    
+        
     
     
+    def createMenu(self):
+        menu_bar = wx.MenuBar()
+        file_menu = wx.Menu()
+        reset_menu_item = file_menu.Append(wx.NewId(), 'Reset', 'Reset the model.')
+        fit_menu_item = file_menu.Append(wx.NewId(), 'Fit', 'Fit current model.')
+        save_menu_item = file_menu.Append(wx.NewId(), 'Save', 'Save current model.')
+        menu_bar.Append(file_menu, 'File')
+        self.SetMenuBar(menu_bar)
+        
+        self.Bind(wx.EVT_MENU, self.controlPanel.onResetButton, reset_menu_item)
+        self.Bind(wx.EVT_MENU, self.controlPanel.onFitButton, fit_menu_item)
+        self.Bind(wx.EVT_MENU, self.controlPanel.onSaveButton, save_menu_item)
+        
+        entries = [wx.AcceleratorEntry(wx.ACCEL_CMD, ord('R'), reset_menu_item.GetId()),
+                   wx.AcceleratorEntry(wx.ACCEL_CMD, ord('F'), fit_menu_item.GetId()),
+                   wx.AcceleratorEntry(wx.ACCEL_CMD, ord('S'), save_menu_item.GetId())]
+        acc_table = wx.AcceleratorTable(entries)
+        self.SetAcceleratorTable(acc_table)
+    
+        
     def updatePlots(self, model, reset=False):
         bulge_flux, disk_flux = create_model_images(model, self.flux.shape, self.psf)
         model_flux = bulge_flux + disk_flux
@@ -400,19 +443,64 @@ class InitialModelFrame(wx.Frame):
             self.plotPanel.reset(self.plotTitle, obs_im, mod_im, res_im, r, obs_r, mod_r, bulge_r, disk_r)
         else:
             self.plotPanel.update(obs_im, mod_im, res_im, r, obs_r, mod_r, bulge_r, disk_r)
-    
         
-    def setModelFile(self, model_file):
-        self.modelFile = model_file
-        self.loadModel()
     
-    
-    def loadModel(self):
-        self.initialModel = BDModel.load(self.modelFile)
-        self.model = deepcopy(self.initialModel)
+    def loadModel(self, model_file):
+        if not path.exists(model_file):
+            logger.warn('Initial model file not found (%s), guessing one. ' % self.modelFile)
+            x0 = (self.flux.shape[1] / 2.0) + 1.0
+            y0 = (self.flux.shape[0] / 2.0) + 1.0
+            pa, ell = ellipse_params(self.flux, x0, y0)
+            r = distance(self.flux.shape, x0, y0, pa, ell)
+            r = np.ma.array(r, mask=self.flux.mask)
+            hlr = r50(self.flux, r)
+            I_e = self.flux.max()
+            r_e = 1.0 * hlr
+            n = 2.0
+            I_0 = self.flux.max() * 0.5
+            h = 2.0 * hlr
+            model = BDModel()
+            model.wl = 5635.0
+            model.x0.setValue(x0)
+            model.x0.setLimitsRel(5, 5)
+            model.y0.setValue(y0)
+            model.y0.setLimitsRel(5, 5)
+            model.disk.I_0.setValue(I_0)
+            model.disk.I_0.setTolerance(0.5)
+            model.disk.h.setValue(h)
+            model.disk.h.setTolerance(0.5)
+            model.disk.PA.setValue(pa)
+            model.disk.PA.setLimits(0.0, 180.0)
+            model.disk.ell.setValue(ell)
+            model.disk.ell.setLimits(0.0, 1.0)
+        
+            model.bulge.I_e.setValue(I_e)
+            model.bulge.I_e.setLimits(1e-33, 3.0 * I_e)
+            model.bulge.r_e.setValue(r_e)
+            model.bulge.r_e.setLimits(1e-33, 2.5 * r_e)
+            model.bulge.n.setValue(n, vmin=1.0, vmax=5.0)
+            model.bulge.PA.setValue(pa)
+            model.bulge.PA.setLimits(0.0, 180.0)
+            model.bulge.ell.setValue(ell)
+            model.bulge.ell.setLimits(0.0, 1.0)
+            
+            return model
+        else:
+            return BDModel.load(model_file)
         
         
     def onModelUpdate(self, event):
-        self.updatePlots(event.model)
+        self.updatePlots(event.model, event.reset)
+
+
+    def onFit(self, event):
+        wx.BusyCursor()
+        model = event.model
+        fit_model, converged, chi2 = fit_image(self.flux, self.noise, model, self.psf, mode='NM')
+        logger.debug('Fit converged: %s, chi2 = %f' % (converged, chi2))
+        self.controlPanel.resetParams(fit_model, reset_plot=False)
+        self.updatePlots(fit_model)
+        self.controlPanel.Enable()
+
 ################################################################################
     
