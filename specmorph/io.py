@@ -161,7 +161,7 @@ class DecompContainer(object):
             self.total.writeHDF5(db, grp, 'total', overwrite)
             self.bulge.writeHDF5(db, grp, 'bulge', overwrite)
             self.disk.writeHDF5(db, grp, 'disk', overwrite)
-            save_array(db, grp, 'zones', self.zones, overwrite)
+            save_array(db, grp, 'zones', self.zones.filled(-1), overwrite)
         
         
     def _writeHDF5Tables(self, db, grp):
@@ -198,7 +198,7 @@ class DecompContainer(object):
             self.firstPassParams = grp.first_pass_parameters.read()
             
             zones = grp.zones[...]
-            self.zones = np.ma.array(zones, mask=zones < 0)
+            self.zones = np.ma.array(zones, mask=(zones < 0) | (zones == 999999))
             
             self.total.loadHDF5(db, grp, 'total')
             self.bulge.loadHDF5(db, grp, 'bulge')
