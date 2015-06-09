@@ -133,10 +133,10 @@ class PlotPanel(wx.Panel):
 class ParamCtrl(wx.Panel):
     maxSlider = 2000
     
-    def __init__(self, *args, **kwargs):
-        wx.Panel.__init__(self, *args, **kwargs)
+    def __init__(self, parent, wxid, name, *args, **kwargs):
+        wx.Panel.__init__(self, parent, wxid, *args, **kwargs)
 
-        self.name = 'noname'
+        self.name = name
         self.value = 0.0
         self.llimit = 0.0
         self.ulimit = 1.0
@@ -154,21 +154,21 @@ class ParamCtrl(wx.Panel):
         self.ulimitText.Bind(wx.EVT_TEXT, self.onLimitsChange)
 
         sizer1 = wx.BoxSizer(wx.HORIZONTAL)
-        sizer1.Add(self.label, 0, wx.CENTER, 5)
-        sizer1.Add(self.valueText, 0, wx.LEFT, 5)
+        sizer1.Add(self.label, 0, wx.CENTER, 1)
+        sizer1.Add(self.valueText, 0, wx.LEFT, 1)
         sizer2 = wx.BoxSizer(wx.HORIZONTAL)
-        sizer2.Add(self.llimitText, 0, wx.LEFT, 5)
-        sizer2.Add(self.slider, 1, wx.EXPAND, 5)
-        sizer2.Add(self.ulimitText, 0, wx.LEFT, 5)
+        sizer2.Add(self.llimitText, 0, wx.LEFT, 1)
+        sizer2.Add(self.slider, 1, wx.EXPAND, 1)
+        sizer2.Add(self.ulimitText, 0, wx.LEFT, 1)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(sizer1, 1, wx.ALL, 5)
-        sizer.Add(sizer2, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(sizer1, 1, wx.ALL, 1)
+        sizer.Add(sizer2, 1, wx.EXPAND | wx.ALL, 1)
         self.SetSizer(sizer)
         
     
-    def init(self, param):
-        self.name = param.name        
+    def init(self, param, name):
+        self.name = name        
         self.value = param.value        
         self.llimit = param.limits[0]
         self.ulimit = param.limits[1]
@@ -262,14 +262,18 @@ class ControlPanel(wx.Panel):
         self.saveButton = wx.Button(self, wx.ID_ANY, 'Save', (-1, -1), wx.DefaultSize)
 
         self.params = {}
-        self.X0 = self.addParamCtrl(self.model.x0)
-        self.I_e = self.addParamCtrl(self.model.bulge.I_e)
-        self.r_e = self.addParamCtrl(self.model.bulge.r_e)
-        self.n = self.addParamCtrl(self.model.bulge.n)
+        self.X0 = self.addParamCtrl(self.model.x0, 'X_0')
+        self.I_e = self.addParamCtrl(self.model.bulge.I_e, 'I_e')
+        self.r_e = self.addParamCtrl(self.model.bulge.r_e, 'r_e')
+        self.n = self.addParamCtrl(self.model.bulge.n, 'n')
+        self.PA_b = self.addParamCtrl(self.model.bulge.PA, 'PA_b')
+        self.ell_b = self.addParamCtrl(self.model.bulge.ell, 'ell_b')
 
-        self.Y0 = self.addParamCtrl(self.model.y0)
-        self.I_0 = self.addParamCtrl(self.model.disk.I_0)
-        self.h = self.addParamCtrl(self.model.disk.h)
+        self.Y0 = self.addParamCtrl(self.model.y0, 'Y0')
+        self.I_0 = self.addParamCtrl(self.model.disk.I_0, 'I_0')
+        self.h = self.addParamCtrl(self.model.disk.h, 'h')
+        self.PA_d = self.addParamCtrl(self.model.disk.PA, 'PA_d')
+        self.ell_d = self.addParamCtrl(self.model.disk.ell, 'ell_d')
         
         self.resetButton.Bind(wx.EVT_BUTTON, self.onResetButton)
         self.fitButton.Bind(wx.EVT_BUTTON, self.onFitButton)
@@ -277,38 +281,42 @@ class ControlPanel(wx.Panel):
 
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         sizer_l = wx.BoxSizer(wx.VERTICAL)
-        sizer_l.Add(self.X0, 1, wx.EXPAND | wx.ALL, 5)
-        sizer_l.Add(self.I_e, 1, wx.EXPAND | wx.ALL, 5)
-        sizer_l.Add(self.r_e, 1, wx.EXPAND | wx.ALL, 5)
-        sizer_l.Add(self.n, 1, wx.EXPAND | wx.ALL, 5)
+        sizer_l.Add(self.X0, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_l.Add(self.I_e, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_l.Add(self.r_e, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_l.Add(self.n, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_l.Add(self.PA_b, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_l.Add(self.ell_b, 1, wx.EXPAND | wx.ALL, 1)
 
         sizer_r = wx.BoxSizer(wx.VERTICAL)
-        sizer_r.Add(self.Y0, 1, wx.EXPAND | wx.ALL, 5)
-        sizer_r.Add(self.I_0, 1, wx.EXPAND | wx.ALL, 5)
-        sizer_r.Add(self.h, 1, wx.EXPAND | wx.ALL, 5)
+        sizer_r.Add(self.Y0, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_r.Add(self.I_0, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_r.Add(self.h, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_r.Add(self.PA_d, 1, wx.EXPAND | wx.ALL, 1)
+        sizer_r.Add(self.ell_d, 1, wx.EXPAND | wx.ALL, 1)
         
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        button_sizer.Add(self.resetButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
-        button_sizer.Add(self.fitButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        button_sizer.Add(self.resetButton, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        button_sizer.Add(self.fitButton, 0, wx.ALIGN_CENTER | wx.ALL, 1)
 
-        sizer_r.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
-        sizer_r.Add(self.saveButton, 0, wx.ALIGN_CENTER | wx.ALL, 5)
-        sizer.Add(sizer_l, 1, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(sizer_r, 1, wx.EXPAND | wx.ALL, 5)
+        sizer_r.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        sizer_r.Add(self.saveButton, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        sizer.Add(sizer_l, 1, wx.EXPAND | wx.ALL, 1)
+        sizer.Add(sizer_r, 1, wx.EXPAND | wx.ALL, 1)
 
         self.SetSizer(sizer)
         
 
-    def addParamCtrl(self, param):
-        paramCtrl = ParamCtrl(self, wx.ID_ANY)
-        self.initParamCtrl(paramCtrl, param)
+    def addParamCtrl(self, param, name):
+        paramCtrl = ParamCtrl(self, wx.ID_ANY, name)
+        self.initParamCtrl(paramCtrl, param, name)
         paramCtrl.Bind(EVT_PARAM_UPDATE_EVENT, self.onParamUpdate)
         return paramCtrl
 
 
-    def initParamCtrl(self, paramCtrl, param):
-        paramCtrl.init(param)
-        self.params[param.name] = param
+    def initParamCtrl(self, paramCtrl, param, name):
+        paramCtrl.init(param, name)
+        self.params[name] = param
 
 
     def sendModelUpdateEvent(self, reset=False):
@@ -334,15 +342,19 @@ class ControlPanel(wx.Panel):
         self.model = deepcopy(model)
         self.params = {}
         
-        self.initParamCtrl(self.X0, self.model.x0)
-        self.initParamCtrl(self.Y0, self.model.y0)
+        self.initParamCtrl(self.X0, self.model.x0, 'X0')
+        self.initParamCtrl(self.Y0, self.model.y0, 'Y0')
 
-        self.initParamCtrl(self.I_e, self.model.bulge.I_e)
-        self.initParamCtrl(self.r_e, self.model.bulge.r_e)
-        self.initParamCtrl(self.n, self.model.bulge.n)
+        self.initParamCtrl(self.I_e, self.model.bulge.I_e, 'I_e')
+        self.initParamCtrl(self.r_e, self.model.bulge.r_e, 'r_e')
+        self.initParamCtrl(self.n, self.model.bulge.n, 'n')
+        self.initParamCtrl(self.PA_b, self.model.bulge.PA, 'PA_b')
+        self.initParamCtrl(self.ell_b, self.model.bulge.ell, 'ell_b')
 
-        self.initParamCtrl(self.I_0, self.model.disk.I_0)
-        self.initParamCtrl(self.h, self.model.disk.h)
+        self.initParamCtrl(self.I_0, self.model.disk.I_0, 'I_0')
+        self.initParamCtrl(self.h, self.model.disk.h, 'h')
+        self.initParamCtrl(self.PA_d, self.model.disk.PA, 'PA_d')
+        self.initParamCtrl(self.ell_d, self.model.disk.ell, 'ell_d')
         self.sendModelUpdateEvent(reset=reset_plot)
 
         
@@ -355,7 +367,10 @@ class ControlPanel(wx.Panel):
     def onParamUpdate(self, event):
         param = self.params[event.param]
         param.setValue(event.value)
-        param.setLimits(event.llimit, event.ulimit)
+        try:
+            param.setLimits(event.llimit, event.ulimit)
+        except:
+            logger.warn('Bad limits: %f, %f' % (event.llimit, event.ulimit))
         self.sendModelUpdateEvent()
 ################################################################################
 
@@ -404,9 +419,9 @@ class InitialModelFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.controlPanel.onFitButton, fit_menu_item)
         self.Bind(wx.EVT_MENU, self.controlPanel.onSaveButton, save_menu_item)
         
-        entries = [wx.AcceleratorEntry(wx.ACCEL_CMD, ord('R'), reset_menu_item.GetId()),
-                   wx.AcceleratorEntry(wx.ACCEL_CMD, ord('F'), fit_menu_item.GetId()),
-                   wx.AcceleratorEntry(wx.ACCEL_CMD, ord('S'), save_menu_item.GetId())]
+        entries = [wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('R'), reset_menu_item.GetId()),
+                   wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('F'), fit_menu_item.GetId()),
+                   wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('S'), save_menu_item.GetId())]
         acc_table = wx.AcceleratorTable(entries)
         self.SetAcceleratorTable(acc_table)
     
@@ -447,28 +462,29 @@ class InitialModelFrame(wx.Frame):
     
     def loadModel(self, model_file):
         if not path.exists(model_file):
-            logger.warn('Initial model file not found (%s), guessing one. ' % self.modelFile)
+            logger.warn('Initial model file not found (%s), guessing one. ' % model_file)
             x0 = (self.flux.shape[1] / 2.0) + 1.0
             y0 = (self.flux.shape[0] / 2.0) + 1.0
             pa, ell = ellipse_params(self.flux, x0, y0)
             r = distance(self.flux.shape, x0, y0, pa, ell)
             r = np.ma.array(r, mask=self.flux.mask)
             hlr = r50(self.flux, r)
-            I_e = self.flux.max()
-            r_e = 1.0 * hlr
+            I_e = self.flux.max() * 0.1
+            r_e = 0.5 * hlr
             n = 2.0
-            I_0 = self.flux.max() * 0.5
-            h = 2.0 * hlr
+            I_0 = self.flux.max() * 0.1
+            h = 1.0 * hlr
             model = BDModel()
             model.wl = 5635.0
             model.x0.setValue(x0)
-            model.x0.setLimitsRel(5, 5)
+            model.x0.setLimitsRel(10, 10)
             model.y0.setValue(y0)
-            model.y0.setLimitsRel(5, 5)
+            model.y0.setLimitsRel(10, 10)
+            
             model.disk.I_0.setValue(I_0)
-            model.disk.I_0.setTolerance(0.5)
+            model.disk.I_0.setLimits(0.0, 10.0 * I_0)
             model.disk.h.setValue(h)
-            model.disk.h.setTolerance(0.5)
+            model.disk.h.setLimits(0.0, 5.0 * hlr)
             model.disk.PA.setValue(pa)
             model.disk.PA.setLimits(0.0, 180.0)
             model.disk.ell.setValue(ell)
