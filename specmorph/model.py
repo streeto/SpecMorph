@@ -183,39 +183,34 @@ def smooth_param_polynomial(param, wl, flags, l_obs, degree=1):
         line = models.Polynomial1D(degree)
     fit = fitting.LinearLSQFitter()
     param_fitted = fit(line, wl[flag_ok], param[flag_ok])
-    sigma = np.std(param - param_fitted(wl))
-    return param_fitted(l_obs), sigma
+    return param_fitted(l_obs)
 ################################################################################
 
 
 ################################################################################
-def smooth_models(models, wl, degree=1, fix_structural=True):
+def smooth_models(models, wl, degree=1):
     params = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     smooth_params = np.empty(len(wl), dtype=params[0].dtype)    
     param_wl = params['wl']
     param_flag = params['flag']
-    sigma = {}
+    
+    m_tpl = models[0]
 
     for p in params.dtype.names:
         if p in ['wl', 'flag', 'chi2', 'n_pix']: continue
-        smooth_params[p], sigma[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree)
-    #delta = {p: 3*sig for p, sig in sigma.iteritems()}
+        smooth_params[p] = smooth_param_polynomial(params[p], param_wl, param_flag, wl, degree)
     models = []
     for i in xrange(len(smooth_params)):
-        # FIXME: Delta estimation for parameter ranges. Does not work as intended, so disabled it.
         m = BDModel.fromParamVector(smooth_params[i], delta=None)
-        #m.disk.I_0.setLimits(1e-33, 3.0 * m.disk.I_0.value)
-        #m.bulge.I_e.setLimits(1e-33, 3.0 * m.bulge.I_e.value)
-        if fix_structural:
-            m.x0.fixed=True
-            m.y0.fixed=True
-            m.bulge.r_e.fixed=True
-            m.bulge.n.fixed=True
-            m.bulge.PA.fixed=True
-            m.bulge.ell.fixed=True
-            m.disk.h.fixed=True
-            m.disk.PA.fixed=True
-            m.disk.ell.fixed=True
+        m.x0.setLimitsRel(5, 5)
+        m.y0.setLimitsRel(5, 5)
+        m.bulge.r_e._limits = m_tpl.bulge.r_e.limits
+        m.bulge.n._limits = m_tpl.bulge.n.limits
+        m.bulge.PA._limits = m_tpl.bulge.PA.limits
+        m.bulge.ell._limits = m_tpl.bulge.ell.limits
+        m.disk.h._limits = m_tpl.disk.h.limits
+        m.disk.PA._limits = m_tpl.disk.PA.limits
+        m.disk.ell._limits = m_tpl.disk.ell.limits
         models.append(m)
     return models
 ################################################################################
