@@ -98,7 +98,7 @@ def decomp(cube, sampleId, args):
                    wl_FWHM=dec.wlFWHM)
     
     models = dec.fitSpectra(step=50*args.boxStep, box_radius=25*args.boxStep,
-                            initial_model=initial_model, mode='NM', masked_wl=masked_wl)
+                            initial_model=initial_model, mode=args.fitAlgorithm, masked_wl=masked_wl)
     c.firstPassParams = np.array([m.getParams() for m in models], dtype=models[0].dtype)
     logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
     
@@ -108,7 +108,7 @@ def decomp(cube, sampleId, args):
     
     logger.info('Starting second pass modeling...')
     models = dec.fitSpectra(step=args.boxStep, box_radius=args.boxRadius,
-                            initial_model=models, mode='LM', insist=True, masked_wl=masked_wl)
+                            initial_model=models, mode=args.fitAlgorithm, insist=False, masked_wl=masked_wl)
     logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
     
     t1 = time.time()
@@ -164,6 +164,8 @@ def parse_args():
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         help='Enable verbose output.')
     
+    parser.add_argument('--fit-algorithm', dest='fitAlgorithm', type=str, default='LM',
+                        help='Which fitting algorithm to use: LM (default) or NM.')
     parser.add_argument('--grating', dest='grating', type=str, default='none',
                         help='Which grating was used (changes the error covariance). V500, V1200 or none.')
     parser.add_argument('--estimate-var', dest='estVar', action='store_true',
