@@ -54,6 +54,9 @@ def decomp(cube, sampleId, args):
             
     logger.info('Starting fit for %s...' % galaxyId)
     dec = CALIFADecomposer(cube, grating=args.grating, nproc=args.nproc)
+    npix = dec.K.qMask.sum()
+    dec.minNPix = npix / 2
+    logger.info('Minimum number of pixels for fitting: %d' % dec.minNPix)
     dec.useEstimatedVariance = args.estVar
     dec.setSynthPSF(FWHM=args.psfFWHM, beta=args.psfBeta, size=args.psfSize)
     
