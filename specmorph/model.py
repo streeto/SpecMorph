@@ -204,12 +204,20 @@ def smooth_models(models, wl, degree=1):
         m = BDModel.fromParamVector(smooth_params[i], delta=None)
         m.x0.setLimitsRel(5, 5)
         m.y0.setLimitsRel(5, 5)
+        if m.bulge.I_e.value <= 0.0:
+            m.bulge.I_e.setValue(0.0)
+            m.bulge.I_e._limits = m_tpl.bulge.I_e.limits
+        else:
+            m.bulge.I_e.setLimits(0.0, m.bulge.I_e.value * 10)
         m.bulge.r_e._limits = m_tpl.bulge.r_e.limits
         m.bulge.n._limits = m_tpl.bulge.n.limits
-        m.bulge.PA._limits = m_tpl.bulge.PA.limits
         m.bulge.ell._limits = m_tpl.bulge.ell.limits
+        if m.disk.I_0.value <= 0.0:
+            m.disk.I_0.setValue(0.0)
+            m.disk.I_0._limits = m_tpl.disk.I_0.limits
+        else:
+            m.disk.I_0.setLimits(0.0, m.disk.I_0.value * 10)
         m.disk.h._limits = m_tpl.disk.h.limits
-        m.disk.PA._limits = m_tpl.disk.PA.limits
         m.disk.ell._limits = m_tpl.disk.ell.limits
         models.append(m)
     return models
