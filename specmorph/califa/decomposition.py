@@ -7,6 +7,7 @@ Created on 20/06/2014
 from ..decomposition import IFSDecomposer
 from ..util import logger
 from ..kinematics import fix_kinematics
+from .tables import califa_id_from_cube
 
 from pycasso.fitsdatacube import fitsQ3DataCube
 import numpy as np
@@ -30,6 +31,7 @@ class CALIFADecomposer(IFSDecomposer):
             disp_FWHM = None
         else:
             raise Exception('Unknown grating type %s' % grating)
+        self.name = califa_id_from_cube(db)
         self.K = fitsQ3DataCube(db, smooth=True)
         self.flux_unit = self.K.keywords['FLUX_UNIT']
         flux, error, flags, vel_FWHM = self._fixKinematics(target_vd, disp_FWHM, nproc)

@@ -23,6 +23,7 @@ def fit_image(flux, noise, guess_model, PSF=None,
     logger.debug('Valid pix: %d | Iter.: %d | pegged: %d | fit stat.: %f | BIC: %f' % \
                  (imfit.nValidPixels, imfit.nIter, imfit.nPegged, imfit.reducedFitStatistic, imfit.BIC))
     fitted_model = imfit.getModelDescription()
+    logger.debug('     Fitted model:\n%s\n\n' % str(fitted_model))
     if not imfit.fitConverged or imfit.nPegged > 0:
         logger.warn('Bad fit: did not converge or pegged parameter.')
         if mode == 'LM' and insist:
@@ -36,7 +37,7 @@ def fit_image(flux, noise, guess_model, PSF=None,
                 logger.debug('     N-M simplex fit statistic: %f | BIC: %f' % (imfit.reducedFitStatistic, imfit.BIC))
             else:
                 logger.warn('     Bad fit: N-M simplex did not converge.')
-                logger.debug('     Initial model:\n%s\n\n' % str(guess_model))
+                logger.debug('     Fitted model:\n%s\n\n' % str(fitted_model))
     return fitted_model, imfit.fitConverged, imfit.reducedFitStatistic
 ################################################################################
 

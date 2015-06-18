@@ -262,7 +262,7 @@ class ControlPanel(wx.Panel):
         self.saveButton = wx.Button(self, wx.ID_ANY, 'Save', (-1, -1), wx.DefaultSize)
 
         self.params = {}
-        self.X0 = self.addParamCtrl(self.model.x0, 'X_0')
+        self.X0 = self.addParamCtrl(self.model.x0, 'X0')
         self.I_e = self.addParamCtrl(self.model.bulge.I_e, 'I_e')
         self.r_e = self.addParamCtrl(self.model.bulge.r_e, 'r_e')
         self.n = self.addParamCtrl(self.model.bulge.n, 'n')

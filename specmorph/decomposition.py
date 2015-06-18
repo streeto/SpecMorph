@@ -24,6 +24,7 @@ class IFSDecomposer(object):
     
     def __init__(self):
         self._PSF = None
+        self.name = None
 
 
     def loadData(self, wl, flux, error, flags, wl_FWHM=None):
@@ -147,7 +148,10 @@ class IFSDecomposer(object):
         slices = self._specSlicer(step, box_radius, masked_wl=masked_wl)
         models = []
         for flux, noise, wl in slices:
-            logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
+            if self.name is not None:
+                logger.debug('Fitting %s (%.0f \\AA)' % (self.name, wl))
+            else:
+                logger.debug('Fitting for wavelength: %.0f \\AA' % wl)
             fitted_model = self._fit(flux, noise, initial_model.next(), mode, insist, nproc)
             fitted_model.wl = wl
             models.append(fitted_model)
