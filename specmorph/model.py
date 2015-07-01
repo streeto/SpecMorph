@@ -208,7 +208,7 @@ def smooth_models(models, wl, degree=1):
             m.bulge.I_e.setValue(0.0)
             m.bulge.I_e._limits = m_tpl.bulge.I_e.limits
         else:
-            m.bulge.I_e.setLimits(0.0, m.bulge.I_e.value * 10)
+            m.bulge.I_e.setLimits(0.0, m.bulge.I_e.value * 20)
         m.bulge.r_e._limits = m_tpl.bulge.r_e.limits
         m.bulge.n._limits = m_tpl.bulge.n.limits
         m.bulge.ell._limits = m_tpl.bulge.ell.limits
@@ -216,7 +216,7 @@ def smooth_models(models, wl, degree=1):
             m.disk.I_0.setValue(0.0)
             m.disk.I_0._limits = m_tpl.disk.I_0.limits
         else:
-            m.disk.I_0.setLimits(0.0, m.disk.I_0.value * 10)
+            m.disk.I_0.setLimits(0.0, m.disk.I_0.value * 20)
         m.disk.h._limits = m_tpl.disk.h.limits
         m.disk.ell._limits = m_tpl.disk.ell.limits
         models.append(m)
