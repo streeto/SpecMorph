@@ -32,9 +32,8 @@ def load_line_mask(line_file, wl):
 
 ################################################################################
 def load_sample(fname):
-    import atpy
-    from asciitable import CommentedHeaderReader
-    return atpy.Table(fname, type='ascii', Reader=CommentedHeaderReader)
+    from astropy.io import ascii
+    return ascii.read(fname, Reader=ascii.CommentedHeader)
 ################################################################################
 
 
