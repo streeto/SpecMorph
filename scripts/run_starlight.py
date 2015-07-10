@@ -33,10 +33,12 @@ def makedirs(the_path):
 ###############################################################################
 class GridManager(object):
     
-    def __init__(self, starlight_dir, db, sample, galaxy_id):
+    def __init__(self, starlight_dir, db, sample, galaxy_id, err_factor=None, blue_clip=None):
         self.starlightDir = starlight_dir
         self.galaxyId = galaxy_id
         self.sample = sample
+        self._errFactor = err_factor
+        self._blueClip = blue_clip
         self._dc = DecompContainer()
         self._dc.loadHDF5(db, sample, galaxy_id)
         self._gridTemplate, self._runTemplate = self._getTemplates()
@@ -77,8 +79,13 @@ class GridManager(object):
         l_obs = comp.wl
         f_obs, f_err, f_flag = comp.asZones(self._dc.zones)
         f_obs = np.hstack((comp.i_f_obs[:, np.newaxis], f_obs))
-        f_err = np.hstack((comp.i_f_err[:, np.newaxis], f_err))
+        if self._errFactor is None:
+            f_err = np.hstack((comp.i_f_err[:, np.newaxis], f_err))
+        else:
+            f_err = np.ones_like(f_obs) * (self._errFactor * f_obs.mean(axis=0))
         f_flag = np.hstack((comp.i_f_flag[:, np.newaxis], f_flag))
+        if self._blueClip is not None:
+            f_flag[l_obs < self._blueClip] = True
         return l_obs, f_obs, f_err, f_flag
         
         
@@ -127,8 +134,6 @@ class GridManager(object):
 ###############################################################################
 
 
-sr.starlight_exec_path = '/Users/andre/astro/qalifa/pystarlight/src/pystarlight/mock/mock_starlight.py'
-
 parser = argparse.ArgumentParser(description='Run starlight for a B/D decomposition.')
 
 parser.add_argument('galaxyId', type=str, nargs=1,
@@ -145,14 +150,22 @@ parser.add_argument('--chunk-size', dest='chunkSize', type=int, default=1,
                     help='Grid chunk size, defaults to the same as --nproc.')
 parser.add_argument('--timeout', dest='timeout', type=int, default=20,
                     help='Timeout of starlight processes, in minutes. Defaults to 20.')
-parser.add_argument('--spectra-type', dest='spectraType', default='f_obs',
-                    help='Spectra type, defaults to f_obs (observed spectra).')
+parser.add_argument('--error-factor', dest='errFactor', type=float, default=None,
+                    help='Replace the errors errors by this fraction of the mean flux. Default: not used.')
+parser.add_argument('--blue-clip', dest='blueClip', type=float, default=None,
+                    help='Flag the fluxes with lambda (Angstrom) smaller than this value. Default: not used.')
+parser.add_argument('--debug', dest='debug', action='store_true',
+                    help='Enable fake starlight run (debug mode).')
 args = parser.parse_args()
 galaxy_id = args.galaxyId[0]
 nproc = args.nproc if args.nproc > 1 else 1
 
+if args.debug:
+    from pystarlight import mock
+    sr.starlight_exec_path = path.join(path.dirname(mock.__file__), 'mock_starlight.py')
+
 print 'Loading grid manager.'
-gm = GridManager(args.starlightDir, args.db, args.sample, galaxy_id)
+gm = GridManager(args.starlightDir, args.db, args.sample, galaxy_id, err_factor=args.errFactor, blue_clip=args.blueClip)
 print 'Starting starlight runner.'
 runner = sr.StarlightRunner(n_workers=nproc, timeout=args.timeout * 60.0, compress=True)
 for grid in gm.gridIterator(chunk_size=args.chunkSize):
