@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Created on 10/09/2014
 
@@ -12,6 +13,29 @@ from specmorph.geometry import fix_PA_ell, distance
 from imfit import Imfit, SimpleModelDescription, function_description
 import sys
 
+################################################################################
+def plot_setup():
+    plotpars = {'legend.fontsize': 8,
+                'xtick.labelsize': 10,
+                'ytick.labelsize': 10,
+                'text.fontsize': 10,
+                'axes.titlesize': 12,
+                'lines.linewidth': 0.5,
+                'font.family': 'Times New Roman',
+    #             'figure.subplot.left': 0.08,
+    #             'figure.subplot.bottom': 0.08,
+    #             'figure.subplot.right': 0.97,
+    #             'figure.subplot.top': 0.95,
+    #             'figure.subplot.wspace': 0.42,
+    #             'figure.subplot.hspace': 0.1,
+                'image.cmap': 'GnBu',
+                }
+    plt.rcParams.update(plotpars)
+    plt.ioff()
+################################################################################
+
+plot_setup()
+
 star = sys.argv[1]
 date = sys.argv[2]
 grating = sys.argv[3]
@@ -22,7 +46,7 @@ if beta4:
 else:
     name = func
 
-cube = '../../../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
+cube = '../cubes.calibration/%s.%s.%s.scube.fits' % (star, date, grating)
 psfLstep = 400.0 # /AA
 badpix_frac = 0.5
 sigma2fwhm = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -125,7 +149,7 @@ for i in xrange(flux.shape[0]):
     print '    Valid pix: %.1f %%' % (_goodfraction * 100.0)
     print '    Flagged? %s' % flagged
     
-    chi2.append(imfit.reducedFitStatistic)
+    chi2.append(imfit.fitStatistic)
     fitmodel = imfit.getModelDescription()
     modelimage = imfit.getModelImage()
     psfmodels.append(fitmodel)
@@ -139,24 +163,33 @@ for i in xrange(flux.shape[0]):
         yslice = slice(y0 - imradius, y0 + imradius)
         residual = flux[i] - modelimage
     
-        plt.ioff()
+        width_pt = 448.07378
+        width_in = width_pt / 72.0 * 0.9
+        fig = plt.figure(figsize=(width_in, width_in * 0.9))
         plt.clf()
-        fig = plt.figure(1, figsize=(10, 7))
-        gs = plt.GridSpec(2, 3, height_ratios=[2.0, 3.0])
+        gs = plt.GridSpec(2, 3, height_ratios=[1.0, 2.0])
         ax = plt.subplot(gs[0,0])
         im = ax.imshow(flux[i, yslice, xslice] / norm, vmin=0.0, vmax=1.1, cmap='OrRd')
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
         plt.colorbar(im, ax=ax)
-        ax.set_title('original')
+        ax.set_title('Observado')
         ax = plt.subplot(gs[0,1])
         im = ax.imshow(modelimage[yslice, xslice] / norm, vmin=0.0, vmax=1.1, cmap='OrRd')
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
         plt.colorbar(im, ax=ax)
-        ax.set_title('model')
+        ax.set_title('Modelo')
         
         ax = plt.subplot(gs[0,2])
         #res_max = max(np.abs(np.min(residual)), np.max(residual))
         im = ax.imshow(residual[yslice, xslice] / norm, vmin=-0.35, vmax=0.35, cmap='RdBu')
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
         plt.colorbar(im, ax=ax)
-        ax.set_title('residual')
+        ax.set_title(u'Resíduo')
         
         bins = np.arange(0, imradius)
         bins_c = bins[:-1]
@@ -178,21 +211,24 @@ for i in xrange(flux.shape[0]):
             fwhm = fitmodel.psf.fwhm.value
     
         ax = plt.subplot(gs[1,:])
-        ax.errorbar(bins_c, f_r, err_r, linestyle='-', color='k', ecolor='k', label='original')
-        ax.plot(bins_c, model_f_r, 'k--', label='model')
-        ax.plot(bins_c, residual_r, 'k:', label='residual')
+        ax.errorbar(bins_c, f_r, err_r, linestyle='-', color='k', ecolor='k', label='Observado')
+        ax.plot(bins_c, model_f_r, 'k--', label='Modelo')
+        ax.plot(bins_c, residual_r, 'k:', label=u'Resíduo')
         ax.vlines(fwhm / 2, -0.1, 1.2, linestyles='dashdot')
-        ax.text(fwhm / 2 + 0.1, f_r.max() / 2 + 0.1, 'FWHM = %.3f "' % fwhm)
+        ax.text(fwhm / 2 + 0.1, f_r.max() / 2 + 0.1, '$\mathrm{FWHM} = %.3f\,^{\prime\prime}$' % fwhm)
         ax.legend(loc='upper right')
         ax.set_ylim(-0.1, 1.2)
         ax.set_xlim(-0.1, bins_c.max() + 0.1)
+        ax.set_ylabel('fluxo normalizado')
+        ax.set_xlabel(r'raio $[\mathrm{arcsec}]$')
 
         if beta4:
-            plt.suptitle(r'%s PSF fit with $\beta=4$ for %s @ %s (%s, $%d\,\AA$)' % (func, star, date, grating, wl))
+            plt.suptitle(r'Perfil de %s com $\beta=4$ para %s @ %s (config. %s em $%d\,\AA$)' % (func, star, date, grating, wl))
         else:
             plt.suptitle(r'%s PSF fit for %s @ %s (%s, $%d\,\AA$)' % (func, star, date, grating, wl))
     
         gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+        plt.savefig('test/psf/plots/out_calib_spec/PSFMoffatBeta4_exemplo.pdf')
         plt.show()
 
 params = np.ma.empty(len(psfmodels), dtype=[('lambda', 'float64'), ('I_0', 'float64'),
@@ -228,7 +264,7 @@ params['chi2'] = chi2
 params[psfflags] = np.ma.masked
 
 header =' '.join(params.dtype.names)
-np.savetxt('out_calib/%s_%s.%s.%s.v1.5.PSF.dat' % (name, star, date, grating), params, header=header)
+np.savetxt('test/psf/plots/out_calib_spec/%s_%s.%s.%s.v1.5.PSF.dat' % (name, star, date, grating), params, header=header)
 
 
 def getstats(p, wei):
@@ -309,5 +345,5 @@ if beta4:
     plt.suptitle(r'%s PSF parameters with $\beta=4$ for %s @ %s (%s)' % (func, star, date, grating))
 else:
     plt.suptitle('%s PSF parameters for %s @ %s (%s)' % (func, star, date, grating))
-plt.savefig('out_calib/%s_%s.%s.%s.v1.5.PSF.png' % (name, star, date, grating))
+plt.savefig('test/psf/plots/out_calib_spec/%s_%s.%s.%s.v1.5.PSF.png' % (name, star, date, grating))
 

@@ -24,7 +24,7 @@ else:
 
 print 'Fitting %s profiles' % func
 
-cubes = glob('../../../images.calibration/*.g.fits')
+cubes = glob('../images.calibration/*.g.fits')
 fitradius = 30
 sigma2fwhm = 2.0 * np.sqrt(2.0 * np.log(2.0))
 debug = True
@@ -147,7 +147,7 @@ for i, f in enumerate(flux):
         plt.suptitle(r'%s PSF fit (%s)' % (func, star))
 
     gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
-    plt.savefig('out_calib/%s_PSF.%s.g.png'  % (name, star))
+    plt.savefig('test/psf/out_calib_new/%s_PSF.%s.g.png'  % (name, star))
     if debug:
         print _fitmodel
         plt.show()
@@ -186,4 +186,4 @@ params['flag'] = flag
 params['chi2'] = chi2
 
 header =' '.join(params.dtype.names)
-np.savetxt('out_calib/%s_fit_gband.dat' % name, params, header=header, fmt=param_fmt)
+np.savetxt('test/psf/out_calib_new/%s_fit_gband.dat' % name, params, header=header, fmt=param_fmt)

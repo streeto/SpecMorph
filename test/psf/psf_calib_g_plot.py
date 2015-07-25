@@ -30,7 +30,7 @@ param_dtype = [('star', 'S40'), ('I_0', 'float64'),
                ('x0', 'float64'), ('y0', 'float64'), 
                ('PA', 'float64'), ('ell', 'float64'), 
                ('good', 'float64'), ('flag', 'int'), ('chi2', 'float64')]
-params = np.genfromtxt('out_calib/%s_fit_gband.dat' % name, dtype=param_dtype)
+params = np.genfromtxt('test/psf/out_calib_new/%s_fit_gband.dat' % name, dtype=param_dtype)
 params = np.ma.array(params, mask=params['flag'] > 0)
 
 wei = np.exp(-0.5 * params['chi2'])
@@ -73,4 +73,4 @@ if func == 'Moffat' and not beta4:
 
 plt.suptitle(func)
 plt.tight_layout()
-plt.savefig('out_calib/%s_PSF_gband.png' % name)
+plt.savefig('test/psf/out_calib_new/%s_PSF_gband.png' % name)

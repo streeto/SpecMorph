@@ -45,7 +45,7 @@ if beta4:
 else:
     name = func
 
-cube = '../../../cubes.DR2/%s.%s.rscube.fits.gz' % (galaxy, grating)
+cube = '../cubes.DR2/%s.%s.rscube.fits.gz' % (galaxy, grating)
 psfradius = 7
 psfLstep = 400.0 # /AA
 badpix_frac = 0.5
@@ -194,7 +194,7 @@ for i in xrange(psfflux.shape[0]):
     print '    Reduced fit statistic: %f' % imfit.reducedFitStatistic
     print '    Valid pix: %.1f %%' % (_goodfraction * 100.0)
     print '    Flagged? %s' % flagged
-    chi2.append(imfit.reducedFitStatistic)
+    chi2.append(imfit.fitStatistic)
     fitmodel = imfit.getModelDescription()
     modelimage = imfit.getModelImage()
     psfmodels.append(fitmodel)
@@ -295,7 +295,7 @@ params['chi2'] = chi2
 params[psfflags] = np.ma.masked
 
 header =' '.join(params.dtype.names)
-np.savetxt('out/%s_%s.%s.v1.5.PSF.dat' % (name, galaxy, grating), params, header=header)
+np.savetxt('test/psf/plots/out_field/%s_%s.%s.v1.5.PSF.dat' % (name, galaxy, grating), params, header=header)
 
 def getstats(p, wei):
     p_wei = np.sum(p * wei)
@@ -377,5 +377,5 @@ if beta4:
     plt.suptitle(r'%s PSF parameters with $\beta=4$ for %s (%s)' % (func, galaxy, grating))
 else:
     plt.suptitle('%s PSF parameters for %s (%s)' % (func, galaxy, grating))
-plt.savefig('out/%s_%s.%s.v1.5.PSF.png' % (name, galaxy, grating))
+plt.savefig('test/psf/plots/out_field/%s_%s.%s.v1.5.PSF.png' % (name, galaxy, grating))
 
