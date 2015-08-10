@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 '''
 Created on Jun 6, 2013
 
@@ -13,6 +13,9 @@ import numpy as np
 import argparse
 from os import path
 from specmorph.califa.tables import califa_id_from_cube
+
+width_pt = 448.07378
+width_in = width_pt / 72.0 * 0.95
 
 
 ################################################################################
@@ -57,7 +60,7 @@ def load_base(base_file):
 ################################################################################
 def plot_setup(plot_file):
     pdf = PdfPages(plot_file)
-    plotpars = {'legend.fontsize': 8,
+    plotpars = {'legend.fontsize': 9,
                 'xtick.labelsize': 10,
                 'ytick.labelsize': 10,
                 'text.fontsize': 10,
@@ -111,14 +114,14 @@ def plotall(gal, sampleId, args, pdf):
         print '***** Skipped galaxy %s' % galaxyId
         return
     
-    base = load_base(args.basePath)
     
     ################################################################################
     ##########
     ########## Spectra and residuals
     ##########
     ################################################################################
-    fig = plt.figure(1, figsize=(8, 6))
+
+    fig = plt.figure(1, figsize=(width_in, 0.8 * width_in))
     gs = plt.GridSpec(2, 1, height_ratios=[3.0, 1.0])
     ax = plt.subplot(gs[0])
     
@@ -134,40 +137,39 @@ def plotall(gal, sampleId, args, pdf):
     fres_B = (fobs_B - fsyn_B) / fobs_B * 100.0
     fres_D = (fobs_D - fsyn_D) / fobs_D * 100.0
     
-    ax.plot(Kt.l_obs, fobs_T, 'k', label='Original')
-    ax.plot(Kt.l_obs, fsyn_T, 'k:', label='Original (syn)')
-    ax.plot(Kb.l_obs, fobs_B, 'r', label='Bulge')
-    ax.plot(Kt.l_obs, fsyn_B, 'r:', label='Bulge (syn)')
-    ax.plot(Kd.l_obs, fobs_D, 'b', label='Disk')
-    ax.plot(Kt.l_obs, fsyn_D, 'b:', label='Disk (syn)')
+    ax.plot(Kt.l_obs, fobs_T, 'k', label='observado')
+    ax.plot(Kt.l_obs, fsyn_T, 'k', alpha=0.5)
+    ax.plot(Kb.l_obs, fobs_B, 'r', label='bojo')
+    ax.plot(Kt.l_obs, fsyn_B, 'r', alpha=0.5)
+    ax.plot(Kd.l_obs, fobs_D, 'b', label='disco')
+    ax.plot(Kt.l_obs, fsyn_D, 'b', alpha=0.5)
     
     ax.set_xlim(Kt.l_obs.min(), Kt.l_obs.max())
     ax.xaxis.set_major_locator(MultipleLocator(500))
     ax.set_xticklabels([])
-    ax.set_ylabel(r'$F_\lambda\ [erg / s / cm^2 / \AA]$')
-    ax.set_title(r'Integrated spectra')
-    ax.legend()
+    ax.set_ylabel(r'$F_\lambda\ [\mathrm{erg} / \mathrm{s} / \mathrm{cm}^2 / \mathrm{\AA}]$')
+    ax.set_title(u'Espectros integrados ajustados - síntese de populações estelares')
+    ax.legend(loc='upper left', frameon=False)
     
     ax = plt.subplot(gs[1])
-    ax.plot(Kt.l_obs, fres_T, 'k', label='Original')
-    ax.plot(Kb.l_obs, fres_B, 'r', label='Bulge')
-    ax.plot(Kd.l_obs, fres_D, 'b', label='Disk')
+    ax.plot(Kt.l_obs, fres_T, 'k', label='observado')
+    ax.plot(Kb.l_obs, fres_B, 'r', label='bojo')
+    ax.plot(Kd.l_obs, fres_D, 'b', label='disco')
     ax.plot(Kd.l_obs, np.zeros_like(Kd.l_obs), 'k:')
     
     ax.set_xlim(Kt.l_obs.min(), Kt.l_obs.max())
     ax.set_ylim(-15.0, 15.0)
     ax.xaxis.set_major_locator(MultipleLocator(500))
-    ax.set_xlabel(r'wavelength $[\AA]$')
-    ax.set_ylabel(r'Residual [%]')
-    ax.grid(True)
+    ax.set_xlabel(r'Comprimento de onda $[\mathrm{\AA}]$')
+    ax.set_ylabel(u'Resíduo [%]')
+    #ax.grid(True)
     
     m_B = Kb.integrated_Mcor / Kt.integrated_Mcor * 100.0
     m_D = Kd.integrated_Mcor / Kt.integrated_Mcor * 100.0
     l_B = Kb.integrated_Lobn / Kt.integrated_Lobn * 100.0
     l_D = Kd.integrated_Lobn / Kt.integrated_Lobn * 100.0
     
-    plt.suptitle('%s - %s - Bgsd6e' % (galaxyId, gal['Name']))
-    gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
+    gs.tight_layout(fig, rect=[0, 0, 1, 1])
     pdf.savefig(fig)
     
     
@@ -194,73 +196,87 @@ def plotall(gal, sampleId, args, pdf):
     
     bins_B = np.arange(int(Kb.getHLR_pix() * radius_HLR))
     binc_B = bins_B[:-1] + 0.5
-    #atf_B = Kb.radialProfile(Kb.at_flux__yx * Kb.LobnSD__yx, bins_B, rad_scale=1, mode='sum') / \
-    #            Kb.radialProfile(Kb.LobnSD__yx, bins_B, rad_scale=1, mode='sum') 
-    #AV_B = Kb.radialProfile(Kb.A_V__yx, bins_B, rad_scale=1)
-    #azm_B = Kb.radialProfile(Kb.alogZ_mass__yx * Kb.McorSD__yx, bins_B, rad_scale=1, mode='sum') / \
-    #            Kb.radialProfile(Kb.McorSD__yx, bins_B, rad_scale=1, mode='sum') 
-    #M_B = Kb.radialProfile(Kb.McorSD__yx, bins_B, rad_scale=1)
-    atf_B = Kb.integrated_at_flux * np.ones_like(binc_B) 
-    AV_B = Kb.integrated_keywords['A_V'] * np.ones_like(binc_B)
-    azm_B = Kb.integrated_alogZ_mass * np.ones_like(binc_B)
-    M_B = Kb.integrated_Mcor / getArea(Kb, radius_HLR) * np.ones_like(binc_B)
+    atf_B = Kb.radialProfile(Kb.at_flux__yx * Kb.LobnSD__yx, bins_B, rad_scale=1, mode='sum') / \
+                Kb.radialProfile(Kb.LobnSD__yx, bins_B, rad_scale=1, mode='sum') 
+    AV_B = Kb.radialProfile(Kb.A_V__yx, bins_B, rad_scale=1)
+    azm_B = Kb.radialProfile(Kb.alogZ_mass__yx * Kb.McorSD__yx, bins_B, rad_scale=1, mode='sum') / \
+                Kb.radialProfile(Kb.McorSD__yx, bins_B, rad_scale=1, mode='sum') 
+    M_B = Kb.radialProfile(Kb.McorSD__yx, bins_B, rad_scale=1)
+    atf_Bi = Kb.integrated_at_flux * np.ones_like(binc_B) 
+    AV_Bi = Kb.integrated_keywords['A_V'] * np.ones_like(binc_B)
+    azm_Bi = Kb.integrated_alogZ_mass * np.ones_like(binc_B)
+    M_Bi = Kb.integrated_Mcor / getArea(Kb, radius_HLR) * np.ones_like(binc_B)
     
     bins_D = np.arange(int(Kd.getHLR_pix() * radius_HLR))
     #bins_D = np.arange(30)
     binc_D = bins_D[:-1] + 0.5
-    #atf_D = Kd.radialProfile(Kd.at_flux__yx * Kd.LobnSD__yx, bins_D, rad_scale=1, mode='sum') / \
-    #            Kd.radialProfile(Kd.LobnSD__yx, bins_D, rad_scale=1, mode='sum') 
-    #AV_D = Kd.radialProfile(Kd.A_V__yx, bins_D, rad_scale=1)
-    #azm_D = Kd.radialProfile(Kd.alogZ_mass__yx * Kd.McorSD__yx, bins_D, rad_scale=1, mode='sum') / \
-    #            Kd.radialProfile(Kd.McorSD__yx, bins_D, rad_scale=1, mode='sum') 
-    #M_D = Kd.radialProfile(Kd.McorSD__yx, bins_D, rad_scale=1)
-    atf_D = Kd.integrated_at_flux * np.ones_like(binc_D) 
-    AV_D = Kd.integrated_keywords['A_V'] * np.ones_like(binc_D)
-    azm_D = Kd.integrated_alogZ_mass * np.ones_like(binc_D)
-    M_D = Kd.integrated_Mcor / getArea(Kd, radius_HLR) * np.ones_like(binc_D)
+    atf_D = Kd.radialProfile(Kd.at_flux__yx * Kd.LobnSD__yx, bins_D, rad_scale=1, mode='sum') / \
+                Kd.radialProfile(Kd.LobnSD__yx, bins_D, rad_scale=1, mode='sum') 
+    AV_D = Kd.radialProfile(Kd.A_V__yx, bins_D, rad_scale=1)
+    azm_D = Kd.radialProfile(Kd.alogZ_mass__yx * Kd.McorSD__yx, bins_D, rad_scale=1, mode='sum') / \
+                Kd.radialProfile(Kd.McorSD__yx, bins_D, rad_scale=1, mode='sum') 
+    M_D = Kd.radialProfile(Kd.McorSD__yx, bins_D, rad_scale=1)
+    atf_Di = Kd.integrated_at_flux * np.ones_like(binc_D) 
+    AV_Di = Kd.integrated_keywords['A_V'] * np.ones_like(binc_D)
+    azm_Di = Kd.integrated_alogZ_mass * np.ones_like(binc_D)
+    M_Di = Kd.integrated_Mcor / getArea(Kd, radius_HLR) * np.ones_like(binc_D)
     
-    fig = plt.figure(2,  figsize=(8, 6))
+    fig = plt.figure(2, figsize=(width_in, 0.7 * width_in))
     gs = plt.GridSpec(2, 2, height_ratios=[1.0, 1.0])
     ax = plt.subplot(gs[0, 0])
-    ax.plot(binc_T, atf_T, 'k', label=r'Original')
-    ax.plot(binc_T, atf_Ti, 'k--', label=r'Original (int)')
-    ax.plot(binc_B, atf_B, 'r--', label=r'Bulge (int)')
-    ax.plot(binc_D, atf_D, 'b--', label=r'Disk (int)')
-    ax.set_xlabel(r'radius $[arcsec]$')
-    ax.set_ylabel(r'$\langle \log\ t_\star \rangle_{flux}\ [yr]$')
+    ax.plot(binc_T, atf_T, 'k', label=r'observado')
+    ax.plot(binc_B, atf_B, 'r', label='bojo')
+    ax.plot(binc_D, atf_D, 'b', label=r'disco')
+    ax.plot(binc_T, atf_Ti, 'k--')
+    ax.plot(binc_B, atf_Bi, 'r--')
+    ax.plot(binc_D, atf_Di, 'b--')
+    #ax.set_xlabel(r'Raio $[\mathrm{arcsec}]$')
+    ax.set_xticklabels([])
+    ax.set_ylabel(r'$\langle \log\ t_\star \rangle_{\mathrm{Fluxo}}$')
+    ax.set_xlim(0, 25)
     #     ax.legend(loc='lower right')
     
     ax = plt.subplot(gs[0, 1])
-    ax.plot(binc_T, AV_T, 'k', label=r'Original')
-    ax.plot(binc_T, AV_Ti, 'k--', label=r'Original (int)')
-    ax.plot(binc_B, AV_B, 'r--', label=r'Bulge (int)')
-    ax.plot(binc_D, AV_D, 'b--', label=r'Disk (int)')
-    ax.set_xlabel(r'radius $[arcsec]$')
+    ax.plot(binc_T, AV_T, 'k', label=r'observado')
+    ax.plot(binc_B, AV_B, 'r', label='bojo')
+    ax.plot(binc_D, AV_D, 'b', label=r'disco')
+    ax.plot(binc_T, AV_Ti, 'k--')
+    ax.plot(binc_B, AV_Bi, 'r--')
+    ax.plot(binc_D, AV_Di, 'b--')
+    #ax.set_xlabel(r'Raio $[\mathrm{arcsec}]$')
+    ax.set_xticklabels([])
     ax.set_ylabel(r'$A_V$')
-    ax.legend(loc='upper right')
+    ax.set_xlim(0, 25)
+    ax.legend(loc='upper right', frameon=False)
     
     ax = plt.subplot(gs[1, 0])
-    ax.plot(binc_T, azm_T, 'k', label=r'Original')
-    ax.plot(binc_T, azm_Ti, 'k--', label=r'Original (int)')
-    ax.plot(binc_B, azm_B, 'r--', label=r'Bulge (int)')
-    ax.plot(binc_D, azm_D, 'b--', label=r'Disk (int)')
-    ax.set_xlabel(r'radius $[arcsec]$')
-    ax.set_ylabel(r'$\langle \log (Z_\star/Z_\odot) \rangle_{mass}$')
+    ax.plot(binc_T, azm_T, 'k', label=r'observado')
+    ax.plot(binc_B, azm_B, 'r', label='bojo')
+    ax.plot(binc_D, azm_D, 'b', label=r'disco')
+    ax.plot(binc_T, azm_Ti, 'k--')
+    ax.plot(binc_B, azm_Bi, 'r--')
+    ax.plot(binc_D, azm_Di, 'b--')
+    ax.set_xlabel(r'Raio $[\mathrm{arcsec}]$')
+    ax.set_ylabel(r'$\langle \log (Z_\star/Z_\odot) \rangle_{\mathrm{Massa}}$')
+    ax.set_xlim(0, 25)
     #     ax.legend(loc='upper right')
     
     ax = plt.subplot(gs[1, 1])
-    ax.plot(binc_T, M_T, 'k', label=r'Original')
-    ax.plot(binc_T, M_Ti, 'k--', label=r'Original (int)')
-    ax.plot(binc_B, M_B, 'r--', label=r'Bulge (int)')
-    ax.plot(binc_D, M_D, 'b--', label=r'Disk (int)')
-    ax.set_xlabel(r'radius $[arcsec]$')
-    ax.set_ylabel(r'$\mu_\star\ [M_\odot / pc^2]$')
+    ax.plot(binc_T, np.log10(M_T), 'k', label=r'observado')
+    ax.plot(binc_B, np.log10(M_B), 'r', label='bojo')
+    ax.plot(binc_D, np.log10(M_D), 'b', label=r'disco')
+    ax.plot(binc_T, np.log10(M_Ti), 'k--')
+    ax.plot(binc_B, np.log10(M_Bi), 'r--')
+    ax.plot(binc_D, np.log10(M_Di), 'b--')
+    ax.set_xlabel(r'Raio $[\mathrm{arcsec}]$')
+    ax.set_ylabel(r'$\log \mu_\star\ [\mathrm{M}_\odot / \mathrm{pc}^2]$')
+    ax.set_xlim(0, 25)
     #     ax.legend(loc='upper right')
     
-    ax.text(0.95, 0.9, 'Bulge mass: %.1f %%, light: %.1f %%' % (m_B, l_B), color='r', ha='right', transform=ax.transAxes)
-    ax.text(0.95, 0.8, 'Disk mass: %.1f %%, light: %.1f %%' % (m_D, l_D), color='b', ha='right', transform=ax.transAxes)
+    ax.text(0.95, 0.9, 'Bojo - massa: %.1f %%, lumin.: %.1f %%' % (m_B, l_B), color='r', ha='right', size=8, transform=ax.transAxes)
+    ax.text(0.95, 0.8, 'Disco - massa: %.1f %%, lumin.: %.1f %%' % (m_D, l_D), color='b', ha='right', size=8, transform=ax.transAxes)
     
-    plt.suptitle('%s - %s - Bgsd6e' % (galaxyId, gal['Name']))
+    plt.suptitle(u'Propriedades físicas - síntese de populações')
     gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
     pdf.savefig(fig)
     if args.debug:
