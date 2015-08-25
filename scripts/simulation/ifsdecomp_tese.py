@@ -352,7 +352,7 @@ t1 = time.time()
 initial_model = bd_initial_model(qSignal, qNoise, decomp.PSF, quiet=False, cache_model_file=args.cacheModel)
 bulge_image, disk_image = create_model_images(initial_model, qSignal.shape, PSF=decomp.PSF)
 qSignal_model = bulge_image + disk_image
-qSignal_residual = qSignal - qSignal_model
+qSignal_residual = (qSignal - qSignal_model) / qSignal
 bulge_image_nopsf, disk_image_nopsf = create_model_images(initial_model, qSignal.shape, PSF=None)
 logger.warn('Initial model time: %.2f\n' % (time.time() - t1))
 
@@ -419,7 +419,7 @@ tmp = (initial_model.bulge.I_e.value,
        initial_model.disk.h.value,
        args.modelPsfFWHM)
 #plt.suptitle(r'Initial model: $I_e = %.3f$, $r_e = %.3f$, $n = %.3f$, $I_0 = %.3f$, $h = %.3f$, $FWHM = %.2f$' % tmp)
-plt.suptitle(r'Modelo ajustado em $5635\,\mathrm{\AA}$ (componentes sem convoluir com PSF)')
+plt.suptitle(r'Modelo ajustado em $5635\,\mathrm{\AA}$')
 gs.tight_layout(fig, rect=[0, 0, 1, 0.95])
 
 plt.savefig('plots/tese/simulation_fitmodel.pdf')
@@ -577,7 +577,7 @@ plt.savefig('plots/tese/simulation_fitparams.pdf')
 ########## Spectra
 ##########
 ################################################################################
-fig = plt.figure(figsize=(width_in, 1.3 * width_in))
+fig = plt.figure(figsize=(width_in, 1.25 * width_in))
 gs = plt.GridSpec(3, 1, height_ratios=[1.0, 1.0, 1.0])
 
 ax = plt.subplot(gs[0])
@@ -647,7 +647,18 @@ ax.set_xlabel(r'Comprimento de onda $[\AA]$')
 ax.set_ylabel(r'$F_\lambda\ [\mathrm{erg} / \mathrm{s} / \mathrm{cm}^2 / \mathrm{\AA}]$')
 ax.set_title(r'Integrado')
 
-plt.suptitle(r'Espectros ajustados (PSF $FWHM = 2.6^{\prime\prime}$)')
+ax_in = fig.add_axes([0.66, 0.21, 0.3, 0.1])
+l1 = find_nearest_index(wl, 6000.0)
+l2 = find_nearest_index(wl, 6200.0)
+ax_in.plot(decomp.wl[l1:l2], f_bulge[l1:l2], 'r')
+ax_in.plot(decomp.wl[l1:l2], f_bulge_orig[l1:l2], 'r:')
+ax_in.plot(decomp.wl[l1:l2], f_disk[l1:l2], 'b')
+ax_in.plot(decomp.wl[l1:l2], f_disk_orig[l1:l2], 'b:')
+#ax_in.xaxis.set_major_locator(MultipleLocator(500))
+ax_in.set_xticks([])
+ax_in.set_yticks([])
+
+plt.suptitle(r'Espectros ajustados (PSF $FWHM = 2.9^{\prime\prime}$)')
 gs.tight_layout(fig, rect=[0, 0, 1, 0.97])
 plt.savefig('plots/tese/simulation_spectra.pdf')
 

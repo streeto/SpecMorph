@@ -114,7 +114,7 @@ except:
     logger.error('Unknown galaxy: %s' % args.galaxyName)
     sys.exit()
 
-masked = g.flag_ifs[...] > 0
+masked = (g.flag_ifs[...] > 0) | (g.full_ifs[...] < 0.0)
 masked2d = masked.sum(axis=0) > masked.shape[0] / 2
 bulge_image = g.bulge_image[...]
 disk_image = g.disk_image[...]
@@ -213,7 +213,7 @@ logger.info('Beginning decomposition.')
 decomp = IFSDecomposer()
 logger.info('Model using PSF FWHM = %.2f ", beta = %.2f.' % (args.modelPsfFWHM, args.modelPsfBeta))
 decomp.setSynthPSF(FWHM=args.modelPsfFWHM, beta=args.modelPsfBeta, size=15)
-decomp.loadData(wl, full_ifs, full_ifs_noise, np.zeros_like(full_ifs, dtype='bool'))
+decomp.loadData(wl, full_ifs / flux_unit, full_ifs_noise / flux_unit, np.zeros_like(full_ifs, dtype='bool'))
 
 swll, swlu = 5590.0, 5680.0
 sl1 = find_nearest_index(decomp.wl, swll)
@@ -281,7 +281,7 @@ pdf.savefig()
 
 logger.info('Starting first pass modeling.')
 t1 = time.time()
-first_pass_models = decomp.fitSpectra(step=100, box_radius=50, initial_model=initial_model, mode='NM')
+first_pass_models = decomp.fitSpectra(step=100, box_radius=50, initial_model=initial_model, mode='LM')
 first_pass_params = np.array([m.getParams() for m in first_pass_models], dtype=first_pass_models[0].dtype)
 first_pass_lambdas = decomp.wl[::100]
 logger.info('Done first pass modeling, time: %.2f' % (time.time() - t1))
@@ -292,7 +292,7 @@ smoothed_params = np.array([m.getParams() for m in smoothed_models], dtype=smoot
         
 logger.info('Starting second pass modeling...')
 t1 = time.time()
-fitted_models = decomp.fitSpectra(step=1, box_radius=0, initial_model=smoothed_models, mode='LM', insist=True)
+fitted_models = decomp.fitSpectra(step=1, box_radius=0, initial_model=smoothed_models, mode='LM')
 fitted_params = np.array([m.getParams() for m in fitted_models], dtype=fitted_models[0].dtype)
 logger.info('Done second pass modeling, time: %.2f' % (time.time() - t1))
 
@@ -427,9 +427,9 @@ l_range = np.where((decomp.wl > 5590.0) & (decomp.wl < 5680.0))[0]
 l1 = l_range[0]
 l2 = l_range[-1]
 
-bulge_im = np.median(fitted_bulge_ifs[l1:l2], axis=0)
+bulge_im = np.median(fitted_bulge_ifs[l1:l2] * flux_unit, axis=0)
 
-disk_im = np.median(fitted_disk_ifs[l1:l2], axis=0)
+disk_im = np.median(fitted_disk_ifs[l1:l2] * flux_unit, axis=0)
 
 total_im = np.median(decomp.flux[l1:l2] * flux_unit, axis=0)
 
@@ -489,9 +489,9 @@ ax = plt.subplot(gs[0, :])
 xx = np.round(initial_model.x0.value)
 yy = np.round(initial_model.y0.value)
 f_total = decomp.flux[:,yy,xx] * flux_unit
-f_disk = fitted_disk_ifs[:,yy,xx]
+f_disk = fitted_disk_ifs[:,yy,xx] * flux_unit
 f_disk_orig = disk_ifs[:,yy,xx]
-f_bulge = fitted_bulge_ifs[:,yy,xx]
+f_bulge = fitted_bulge_ifs[:,yy,xx] * flux_unit
 f_bulge_orig = bulge_ifs[:,yy,xx]
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
@@ -512,9 +512,9 @@ ax.legend()
 ax = plt.subplot(gs[1, :])
 xx = np.ceil(initial_model.x0.value + initial_model.bulge.r_e.value)
 f_total = decomp.flux[:,yy,xx] * flux_unit
-f_disk = fitted_disk_ifs[:,yy,xx]
+f_disk = fitted_disk_ifs[:,yy,xx] * flux_unit
 f_disk_orig = disk_ifs[:,yy,xx]
-f_bulge = fitted_bulge_ifs[:,yy,xx]
+f_bulge = fitted_bulge_ifs[:,yy,xx] * flux_unit
 f_bulge_orig = bulge_ifs[:,yy,xx]
 f_res = f_total - f_disk - f_bulge
 vmin = min(f_total.min(), f_disk.min(), f_bulge.min(), f_res.min())
@@ -534,7 +534,7 @@ ax.set_title(r'Spectra at $R = r_e$ ($%.1f\,arcsec$)' % initial_model.bulge.r_e.
 
 pa = (90.0 + initial_model.disk.PA.value) * np.pi / 180.0
 ba = 1.0 - initial_model.disk.ell.value
-disk_error = fitted_disk_ifs / disk_ifs
+disk_error = fitted_disk_ifs * flux_unit / disk_ifs
 disk_error_mean = np.mean(disk_error)
 disk_error_std = np.std(disk_error)
 print 'Disk error: %.4f +- %.4f' % (disk_error_mean, disk_error_std)
@@ -546,7 +546,7 @@ disk_error_std = np.std(disk_error_r)
 pa = (90.0 + initial_model.bulge.PA.value) * np.pi / 180.0
 ba = 1.0 - initial_model.bulge.ell.value
 bulge_bins = np.arange(0.0, initial_model.bulge.r_e.value * 2.5 + 1.0)
-bulge_error = fitted_bulge_ifs / bulge_ifs
+bulge_error = fitted_bulge_ifs * flux_unit / bulge_ifs
 good_bulge = distance(total_im.shape, norm_x0, norm_y0, pa, ba) < (initial_model.bulge.r_e.value * 2.5)
 print bulge_error.shape
 bulge_error_mean = np.mean(bulge_error[:, good_bulge])
@@ -620,8 +620,8 @@ for i in xrange(N_cols):
         plot_wl = decomp.wl[l]
         x0 = fitted_params['x0'][l]
         y0 = fitted_params['y0'][l]
-        bulge_im = fitted_bulge_ifs[l]
-        disk_im = fitted_disk_ifs[l]
+        bulge_im = fitted_bulge_ifs[l] * flux_unit
+        disk_im = fitted_disk_ifs[l] * flux_unit
         total_im = decomp.flux[l] * flux_unit
         mask = ~np.isnan(total_im)
         pa, ell = ellipse_params(total_im, x0, y0)

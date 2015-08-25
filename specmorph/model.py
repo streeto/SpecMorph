@@ -92,7 +92,7 @@ def _bd_initial_model(image, noise, PSF, x0=None, y0=None, quiet=True, nproc=0, 
     bdmodel.bulge.I_e.setLimits(1e-33, 3.0 * image_max)
     bdmodel.bulge.r_e.setValue(image_r50 / 2.0)
     bdmodel.bulge.r_e.setLimits(1e-33, 2.5 * image_r50)
-    bdmodel.bulge.n.setValue(3.0, vmin=1.0, vmax=5.0)
+    bdmodel.bulge.n.setValue(3.0, vmin=1.0, vmax=10.0)
     bdmodel.bulge.PA.setValue(pa)
     bdmodel.bulge.PA.setLimitsRel(30.0, 30.0)
     bdmodel.bulge.ell.setValue(ell)
