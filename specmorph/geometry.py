@@ -134,7 +134,10 @@ def ellipse_params(image, x0=0.0, y0=0.0):
     xy = x * y
     r2 = x2 + y2
     
-    im = image.copy()
+    if isinstance(image, np.ma.MaskedArray): 
+        im = image.copy()
+    else:
+        im = np.ma.array(image, copy=True)
     im[r2 < 0.1] = np.ma.masked
     norm = image.sum()
     Mxx = ((x2 / r2) * im).sum() / norm
